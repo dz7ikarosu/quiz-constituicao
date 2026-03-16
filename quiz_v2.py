@@ -1424,6 +1424,23 @@ function doLogout() {
   document.getElementById('login-pass').value = '';
 }
 
+/* Init auth wall */
+(function initAuth() {
+  renderAuthAvatars();
+  // Enter handler em inputs
+  ['login-user','login-pass'].forEach(id => {
+    document.getElementById(id)?.addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+  });
+  ['reg-user','reg-pass','reg-pass2'].forEach(id => {
+    document.getElementById(id)?.addEventListener('keydown', e => { if(e.key==='Enter') doRegister(); });
+  });
+  // Auto-login se sessão salva
+  const sess = loadSession();
+  if (sess && sess.username) {
+    enterGame(sess);
+  }
+})();
+
 /* ── DATA ───────────────────────────────────────────────────────── */
 const QUESTIONS = JSON.parse(document.getElementById('q-data').textContent);
 const LEVELS    = JSON.parse(document.getElementById('l-data').textContent);
@@ -3072,6 +3089,14 @@ function initStarBG() {
   }
   twinkle();
 }
+    sym.textContent = symbols[Math.floor(Math.random() * symbols.length)];
+    sym.style.left = Math.random() * 100 + '%';
+    sym.style.animationDuration = (15 + Math.random() * 25) + 's';
+    sym.style.animationDelay = Math.random() * 20 + 's';
+    sym.style.fontSize = (1 + Math.random() * 2) + 'rem';
+    container.appendChild(sym);
+  }
+}
 
 /* ── EPIC INTRO ────────────────────────────────────────────────────── */
 let introShown = false;
@@ -3439,21 +3464,6 @@ refreshCoinsDisplay();
 initAnimatedBG();
 initStarBG();
 document.getElementById('btn-sound').textContent = profile.soundEnabled ? '🔊' : '🔇';
-
-/* ── AUTH INIT (must be last — needs ui, state, profile all ready) ── */
-(function initAuth() {
-  renderAuthAvatars();
-  ['login-user','login-pass'].forEach(id => {
-    document.getElementById(id)?.addEventListener('keydown', e => { if (e.key==='Enter') doLogin(); });
-  });
-  ['reg-user','reg-pass','reg-pass2'].forEach(id => {
-    document.getElementById(id)?.addEventListener('keydown', e => { if (e.key==='Enter') doRegister(); });
-  });
-  const sess = loadSession();
-  if (sess && sess.username) {
-    enterGame(sess);
-  }
-})();
 </script>
 </body>
 </html>"""
@@ -3665,11 +3675,10 @@ def guess_ip() -> str:
 
 
 def parse_args():
-    import os
     p = argparse.ArgumentParser(description="Arena Constitucional")
-    p.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"))
-    p.add_argument("--port", type=int, default=int(os.environ.get("PORT", 10000)))
-    p.add_argument("--no-browser", action="store_true", default=True)
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--no-browser", action="store_true")
     return p.parse_args()
 
 
