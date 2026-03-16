@@ -3665,10 +3665,11 @@ def guess_ip() -> str:
 
 
 def parse_args():
+    import os
     p = argparse.ArgumentParser(description="Arena Constitucional")
-    p.add_argument("--host", default="127.0.0.1")
-    p.add_argument("--port", type=int, default=8000)
-    p.add_argument("--no-browser", action="store_true")
+    p.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"))
+    p.add_argument("--port", type=int, default=int(os.environ.get("PORT", 10000)))
+    p.add_argument("--no-browser", action="store_true", default=True)
     return p.parse_args()
 
 
