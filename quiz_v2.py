@@ -53,7 +53,7 @@ def _jsonbin_request(method: str, url: str, data=None) -> dict | None:
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             return json.loads(resp.read().decode("utf-8"))
-   except Exception as e:
+    except Exception as e:
         print(f"JSONBin erro: {e}")
         return None
 
