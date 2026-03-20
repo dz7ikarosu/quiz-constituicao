@@ -1,11 +1,13 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import json
+import os
 import socket
 import threading
 import urllib.request
 import urllib.error
+import urllib.parse
 import webbrowser
 from datetime import datetime, date
 from http import HTTPStatus
@@ -16,85 +18,38 @@ TITLE        = "Guardiao da Constituicao: Arena Constitucional"
 LOCK         = threading.Lock()
 RANKING_LIMIT = 50
 
-# â”€â”€ JSONBIN.IO PERSISTENCIA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# Armazena ranking, perfis e contas na nuvem gratuitamente.
-# Crie uma conta em https://jsonbin.io e substitua a chave abaixo.
-JSONBIN_API_KEY = "$2a$10$OuuN55l8wWlXSH5wMV8FDODgDhA4wuCz1FHh66mPGAtybZabzBx7q"
-JSONBIN_BASE    = "https://api.jsonbin.io/v3/b"
+# ── SUPABASE PERSISTENCIA ─────────────────────────────────────────────────────
+# Banco de dados gratuito e confiavel.
+# Configure no Render em Environment:
+#   SUPABASE_URL = https://SEU-PROJETO.supabase.co
+#   SUPABASE_KEY = sua-anon-key
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 
-# IDs dos bins (preenchidos automaticamente na primeira execucao)
-_BIN_IDS: dict = {}
-import os as _os
-_DATA_DIR = Path(_os.environ.get("DATA_DIR", "/data"))
-_DATA_DIR.mkdir(parents=True, exist_ok=True)
-_BIN_IDS_FILE = _DATA_DIR / "quiz_bin_ids.json"
-
-def _bin_ids_load() -> dict:
-    """Carrega IDs dos bins do arquivo local (cache)."""
-    if _BIN_IDS_FILE.exists():
-        try:
-            return json.loads(_BIN_IDS_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    return {}
-
-def _bin_ids_save(ids: dict) -> None:
-    try:
-        _BIN_IDS_FILE.write_text(json.dumps(ids, ensure_ascii=False), encoding="utf-8")
-    except Exception:
-        pass
-
-def _jsonbin_request(method: str, url: str, data=None) -> dict | None:
-    """Faz uma requisicao HTTP para o JSONBin."""
+def _supa(method: str, table: str, data=None, params: str = "") -> list | dict | None:
+    """Faz uma requisicao REST para o Supabase."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        print("AVISO: SUPABASE_URL ou SUPABASE_KEY nao configurados.")
+        return None
+    url = f"{SUPABASE_URL}/rest/v1/{table}{params}"
     headers = {
-        "Content-Type": "application/json",
-        "X-Master-Key": JSONBIN_API_KEY,
-        "X-Bin-Private": "false",
+        "apikey":        SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type":  "application/json",
+        "Prefer":        "return=representation,resolution=merge-duplicates",
     }
     body = json.dumps(data, ensure_ascii=False).encode("utf-8") if data is not None else None
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+            raw = resp.read().decode("utf-8")
+            return json.loads(raw) if raw.strip() else []
+    except urllib.error.HTTPError as e:
+        print(f"Supabase erro {e.code}: {e.read().decode()}")
+        return None
     except Exception as e:
-        print(f"JSONBin erro: {e}")
+        print(f"Supabase erro: {e}")
         return None
-
-def _get_bin(name: str) -> str | None:
-    """Retorna o ID do bin para 'name', criando se nao existir."""
-    global _BIN_IDS
-    if not _BIN_IDS:
-        _BIN_IDS = _bin_ids_load()
-    if name in _BIN_IDS:
-        return _BIN_IDS[name]
-    # Cria um novo bin com dados iniciais vazios
-    initial = [] if name == "ranking" else {}
-    result = _jsonbin_request("POST", JSONBIN_BASE, initial)
-    if result and "metadata" in result:
-        bin_id = result["metadata"]["id"]
-        _BIN_IDS[name] = bin_id
-        _bin_ids_save(_BIN_IDS)
-        return bin_id
-    return None
-
-def _read_bin(name: str):
-    """Le o conteudo de um bin."""
-    bin_id = _get_bin(name)
-    if not bin_id:
-        return None
-    result = _jsonbin_request("GET", f"{JSONBIN_BASE}/{bin_id}/latest")
-    if result and "record" in result:
-        return result["record"]
-    return None
-
-def _write_bin(name: str, data) -> bool:
-    """Escreve dados em um bin."""
-    bin_id = _get_bin(name)
-    if not bin_id:
-        return False
-    result = _jsonbin_request("PUT", f"{JSONBIN_BASE}/{bin_id}", data)
-    return result is not None
-
 # read = seconds to read question before options appear
 # answer = seconds to answer after options appear
 LEVELS = [
@@ -3561,59 +3516,85 @@ def sort_ranking(entries: list) -> list:
 
 
 def load_ranking() -> list:
-    try:
-        raw = _read_bin("ranking")
-    except Exception:
-        raw = None
-    if not isinstance(raw, list):
+    result = _supa("GET", "ranking", params="?select=*&order=score.desc,completion_seconds.asc")
+    if not isinstance(result, list):
         return []
-    return sort_ranking([clean_entry(x) for x in raw if isinstance(x, dict)])[:RANKING_LIMIT]
+    entries = []
+    for row in result:
+        medals = row.get("medals", [])
+        if isinstance(medals, str):
+            try: medals = json.loads(medals)
+            except: medals = []
+        entries.append(clean_entry({**row, "medals": medals}))
+    return entries[:RANKING_LIMIT]
 
 
 def save_ranking(entry: dict) -> list:
     with LOCK:
-        ranking = load_ranking()
-        ranking.append(clean_entry(entry))
-        ranking = sort_ranking(ranking)[:RANKING_LIMIT]
-        _write_bin("ranking", ranking)
-        return ranking
+        cleaned = clean_entry(entry)
+        payload = {**cleaned, "medals": json.dumps(cleaned["medals"], ensure_ascii=False)}
+        _supa("POST", "ranking", data=payload)
+        return load_ranking()
 
 
-def load_profiles() -> dict:
-    try:
-        raw = _read_bin("profiles")
-    except Exception:
-        raw = None
-    if not isinstance(raw, dict):
-        return {}
-    return raw
-
-
-def save_profile_data(name: str, data: dict) -> dict:
-    with LOCK:
-        profiles = load_profiles()
-        profiles[name[:30]] = data
-        _write_bin("profiles", profiles)
-        return profiles
-
-
-def load_accounts() -> dict:
-    try:
-        raw = _read_bin("accounts")
-    except Exception:
-        raw = None
-    return raw if isinstance(raw, dict) else {}
+def get_account(name: str) -> dict:
+    enc = urllib.parse.quote(name, safe="")
+    result = _supa("GET", "accounts", params=f"?name=eq.{enc}&select=*")
+    if isinstance(result, list) and result:
+        raw = result[0].get("data", {})
+        if isinstance(raw, str):
+            try: return json.loads(raw)
+            except: return {}
+        return raw if isinstance(raw, dict) else {}
+    return {}
 
 
 def save_account(name: str, data: dict) -> None:
     with LOCK:
-        accounts = load_accounts()
-        # Preserva o hash de senha se jÃ¡ existir e nÃ£o vier novo
-        existing = accounts.get(name, {})
+        # Preserva o hash de senha se ja existir e nao vier novo
+        existing = get_account(name)
         if "pwHash" not in data and "pwHash" in existing:
             data["pwHash"] = existing["pwHash"]
-        accounts[name] = data
-        _write_bin("accounts", accounts)
+        payload = {"name": name[:30], "data": json.dumps(data, ensure_ascii=False)}
+        _supa("POST", "accounts", data=payload)
+
+
+def load_profiles() -> dict:
+    result = _supa("GET", "profiles", params="?select=*")
+    if not isinstance(result, list):
+        return {}
+    out = {}
+    for row in result:
+        n = row.get("name", "")
+        raw = row.get("data", {})
+        if isinstance(raw, str):
+            try: raw = json.loads(raw)
+            except: raw = {}
+        out[n] = raw
+    return out
+
+
+def save_profile_data(name: str, data: dict) -> dict:
+    with LOCK:
+        payload = {"name": name[:30], "data": json.dumps(data, ensure_ascii=False)}
+        _supa("POST", "profiles", data=payload)
+        return {}
+
+
+def load_accounts() -> dict:
+    # Mantido por compatibilidade — use get_account() diretamente
+    result = _supa("GET", "accounts", params="?select=*")
+    if not isinstance(result, list):
+        return {}
+    out = {}
+    for row in result:
+        n = row.get("name", "")
+        raw = row.get("data", {})
+        if isinstance(raw, str):
+            try: raw = json.loads(raw)
+            except: raw = {}
+        out[n] = raw
+    return out
 
 
 def render_html() -> bytes:
@@ -3655,8 +3636,7 @@ class QuizHandler(BaseHTTPRequestHandler):
             qs = parse_qs(urlparse(self.path).query)
             name = qs.get("name", [""])[0].strip()
             if name:
-                accounts = load_accounts()
-                self.send_json(accounts.get(name, {}))
+                self.send_json(get_account(name))
             else:
                 self.send_json({})
         elif p.startswith("/api/profile"):
