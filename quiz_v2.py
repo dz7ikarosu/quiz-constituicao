@@ -4,6 +4,8 @@ import argparse
 import json
 import socket
 import threading
+import urllib.request
+import urllib.error
 import webbrowser
 from datetime import datetime, date
 from http import HTTPStatus
@@ -11,11 +13,83 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 TITLE        = "Guardiao da Constituicao: Arena Constitucional"
-RANKING_FILE  = Path(__file__).with_name("quiz_ranking.json")
-PROFILE_FILE  = Path(__file__).with_name("quiz_profiles.json")
-ACCOUNTS_FILE = Path(__file__).with_name("quiz_accounts.json")
 LOCK         = threading.Lock()
 RANKING_LIMIT = 50
+
+# ── JSONBIN.IO PERSISTENCIA ───────────────────────────────────────────────────
+# Armazena ranking, perfis e contas na nuvem gratuitamente.
+# Crie uma conta em https://jsonbin.io e substitua a chave abaixo.
+JSONBIN_API_KEY = "$2a$10$OuuN55l8wWlXSH5wMV8FDODgDhA4wuCz1FHh66mPGAtybZabzBx7q"
+JSONBIN_BASE    = "https://api.jsonbin.io/v3/b"
+
+# IDs dos bins (preenchidos automaticamente na primeira execucao)
+_BIN_IDS: dict = {}
+_BIN_IDS_FILE = Path(__file__).with_name("quiz_bin_ids.json")
+
+def _bin_ids_load() -> dict:
+    """Carrega IDs dos bins do arquivo local (cache)."""
+    if _BIN_IDS_FILE.exists():
+        try:
+            return json.loads(_BIN_IDS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
+
+def _bin_ids_save(ids: dict) -> None:
+    try:
+        _BIN_IDS_FILE.write_text(json.dumps(ids, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+def _jsonbin_request(method: str, url: str, data=None) -> dict | None:
+    """Faz uma requisicao HTTP para o JSONBin."""
+    headers = {
+        "Content-Type": "application/json",
+        "X-Master-Key": JSONBIN_API_KEY,
+        "X-Bin-Private": "false",
+    }
+    body = json.dumps(data, ensure_ascii=False).encode("utf-8") if data is not None else None
+    req = urllib.request.Request(url, data=body, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return None
+
+def _get_bin(name: str) -> str | None:
+    """Retorna o ID do bin para 'name', criando se nao existir."""
+    global _BIN_IDS
+    if not _BIN_IDS:
+        _BIN_IDS = _bin_ids_load()
+    if name in _BIN_IDS:
+        return _BIN_IDS[name]
+    # Cria um novo bin com dados iniciais vazios
+    initial = [] if name == "ranking" else {}
+    result = _jsonbin_request("POST", JSONBIN_BASE, initial)
+    if result and "metadata" in result:
+        bin_id = result["metadata"]["id"]
+        _BIN_IDS[name] = bin_id
+        _bin_ids_save(_BIN_IDS)
+        return bin_id
+    return None
+
+def _read_bin(name: str):
+    """Le o conteudo de um bin."""
+    bin_id = _get_bin(name)
+    if not bin_id:
+        return None
+    result = _jsonbin_request("GET", f"{JSONBIN_BASE}/{bin_id}/latest")
+    if result and "record" in result:
+        return result["record"]
+    return None
+
+def _write_bin(name: str, data) -> bool:
+    """Escreve dados em um bin."""
+    bin_id = _get_bin(name)
+    if not bin_id:
+        return False
+    result = _jsonbin_request("PUT", f"{JSONBIN_BASE}/{bin_id}", data)
+    return result is not None
 
 # read = seconds to read question before options appear
 # answer = seconds to answer after options appear
@@ -243,7 +317,8 @@ body{
   border:1px solid var(--red-border);border-radius:13px;
   padding:12px 18px;font-size:.93rem;font-weight:800;
   cursor:pointer;background:#0e0e12;color:var(--text);
-  transition:transform .15s ease,box-shadow .15s ease,opacity .15s ease
+  transition:transform .15s ease,box-shadow .15s ease,opacity .15s ease;
+  user-select:none;-webkit-user-select:none
 }
 .btn:hover:not(:disabled){
   transform:translateY(-2px);
@@ -317,7 +392,8 @@ body{
   background:linear-gradient(160deg,#0b111e,#080e18);
   color:var(--text);border:1px solid var(--red-border);
   transition:transform .15s ease,box-shadow .15s ease,background .2s,border-color .2s;
-  animation:optSlide .38s ease both
+  animation:optSlide .38s ease forwards;
+  user-select:none;-webkit-user-select:none
 }
 .option:nth-child(2){animation-delay:.08s}
 .option:nth-child(3){animation-delay:.16s}
@@ -708,7 +784,7 @@ body.theme-neon .btn.primary{background:linear-gradient(135deg,#a855f7,#6a1b9a);
 .fury-overlay{position:fixed;inset:0;z-index:955;pointer-events:none;background:radial-gradient(ellipse at center,transparent 40%,rgba(21,101,192,.06) 100%);animation:furyPulse 2s ease infinite}
 
 /* ── SUSPENSE ──────────────────────────────────────────────────────── */
-.suspense-overlay{position:fixed;inset:0;z-index:970;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;animation:fadeIn .2s ease both}
+.suspense-overlay{position:fixed;inset:0;z-index:970;pointer-events:none;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;animation:fadeIn .2s ease both}
 .suspense-text{font-family:Georgia,serif;font-size:1.4rem;color:#ffd700;text-align:center;animation:neonBlink .8s ease infinite}
 
 /* ── PARTICLES ─────────────────────────────────────────────────────── */
@@ -1424,23 +1500,6 @@ function doLogout() {
   document.getElementById('login-pass').value = '';
 }
 
-/* Init auth wall */
-(function initAuth() {
-  renderAuthAvatars();
-  // Enter handler em inputs
-  ['login-user','login-pass'].forEach(id => {
-    document.getElementById(id)?.addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
-  });
-  ['reg-user','reg-pass','reg-pass2'].forEach(id => {
-    document.getElementById(id)?.addEventListener('keydown', e => { if(e.key==='Enter') doRegister(); });
-  });
-  // Auto-login se sessão salva
-  const sess = loadSession();
-  if (sess && sess.username) {
-    enterGame(sess);
-  }
-})();
-
 /* ── DATA ───────────────────────────────────────────────────────── */
 const QUESTIONS = JSON.parse(document.getElementById('q-data').textContent);
 const LEVELS    = JSON.parse(document.getElementById('l-data').textContent);
@@ -1809,7 +1868,7 @@ function renderQuestion() {
     }, 1000);
   }
 
-  setTimeout(() => ui.qcard.scrollIntoView({behavior:'smooth', block:'start'}), 70);
+  setTimeout(() => ui.qcard.scrollIntoView({behavior: window.innerWidth < 900 ? 'auto' : 'smooth', block:'start'}), 70);
 }
 
 /* ── REVEAL OPTIONS (fase 2) ──────────────────────────────────────── */
@@ -1827,12 +1886,18 @@ function revealOptions(q, lv) {
   // Renderiza alternativas com delay escalonado via CSS
   const letters = isTF ? ['V', 'F'] : LETTERS;
   ui.options.innerHTML = state.opts.map((opt, i) => `
-    <button class='option' data-i='${i}' style='animation-delay:${i*0.1}s'>
+    <button class='option' data-i='${i}'>
       <b>${letters[i] || ''}</b>${opt.text}
     </button>
   `).join('');
   answerStartTime = Date.now();
   ui.options.querySelectorAll('.option').forEach(btn => {
+    // touchend com preventDefault garante resposta imediata no mobile
+    // sem conflito de scroll (doAnswer já protege contra double-call)
+    btn.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      doAnswer(+btn.dataset.i, false);
+    }, {passive: false});
     btn.addEventListener('click', () => doAnswer(+btn.dataset.i, false));
   });
 
@@ -2095,7 +2160,7 @@ function finishGame() {
 
   ui.btnSave.disabled    = false;
   ui.btnSave.textContent = 'Salvar no ranking';
-  setTimeout(() => ui.result.scrollIntoView({behavior:'smooth', block:'start'}), 90);
+  setTimeout(() => ui.result.scrollIntoView({behavior: window.innerWidth < 900 ? 'auto' : 'smooth', block:'start'}), 90);
 }
 
 /* ── HELPERS (ajudas) ─────────────────────────────────────────────── */
@@ -2258,7 +2323,7 @@ async function startGame() {
   if (gameMode === 'speedrun') startSpeedrunTimer();
 
   renderQuestion();
-  setTimeout(() => ui.game.scrollIntoView({behavior:'smooth', block:'start'}), 60);
+  setTimeout(() => ui.game.scrollIntoView({behavior: window.innerWidth < 900 ? 'auto' : 'smooth', block:'start'}), 60);
 }
 
 /* ── RENDER LEVEL CARDS ───────────────────────────────────────────── */
@@ -3089,14 +3154,6 @@ function initStarBG() {
   }
   twinkle();
 }
-    sym.textContent = symbols[Math.floor(Math.random() * symbols.length)];
-    sym.style.left = Math.random() * 100 + '%';
-    sym.style.animationDuration = (15 + Math.random() * 25) + 's';
-    sym.style.animationDelay = Math.random() * 20 + 's';
-    sym.style.fontSize = (1 + Math.random() * 2) + 'rem';
-    container.appendChild(sym);
-  }
-}
 
 /* ── EPIC INTRO ────────────────────────────────────────────────────── */
 let introShown = false;
@@ -3464,6 +3521,21 @@ refreshCoinsDisplay();
 initAnimatedBG();
 initStarBG();
 document.getElementById('btn-sound').textContent = profile.soundEnabled ? '🔊' : '🔇';
+
+/* ── AUTH INIT (must be last — needs ui, state, profile all ready) ── */
+(function initAuth() {
+  renderAuthAvatars();
+  ['login-user','login-pass'].forEach(id => {
+    document.getElementById(id)?.addEventListener('keydown', e => { if (e.key==='Enter') doLogin(); });
+  });
+  ['reg-user','reg-pass','reg-pass2'].forEach(id => {
+    document.getElementById(id)?.addEventListener('keydown', e => { if (e.key==='Enter') doRegister(); });
+  });
+  const sess = loadSession();
+  if (sess && sess.username) {
+    enterGame(sess);
+  }
+})();
 </script>
 </body>
 </html>"""
@@ -3493,12 +3565,10 @@ def sort_ranking(entries: list) -> list:
 
 
 def load_ranking() -> list:
-    if not RANKING_FILE.exists():
-        return []
     try:
-        raw = json.loads(RANKING_FILE.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return []
+        raw = _read_bin("ranking")
+    except Exception:
+        raw = None
     if not isinstance(raw, list):
         return []
     return sort_ranking([clean_entry(x) for x in raw if isinstance(x, dict)])[:RANKING_LIMIT]
@@ -3509,17 +3579,15 @@ def save_ranking(entry: dict) -> list:
         ranking = load_ranking()
         ranking.append(clean_entry(entry))
         ranking = sort_ranking(ranking)[:RANKING_LIMIT]
-        RANKING_FILE.write_text(json.dumps(ranking, ensure_ascii=False, indent=2), encoding="utf-8")
+        _write_bin("ranking", ranking)
         return ranking
 
 
 def load_profiles() -> dict:
-    if not PROFILE_FILE.exists():
-        return {}
     try:
-        raw = json.loads(PROFILE_FILE.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
+        raw = _read_bin("profiles")
+    except Exception:
+        raw = None
     if not isinstance(raw, dict):
         return {}
     return raw
@@ -3529,17 +3597,15 @@ def save_profile_data(name: str, data: dict) -> dict:
     with LOCK:
         profiles = load_profiles()
         profiles[name[:30]] = data
-        PROFILE_FILE.write_text(json.dumps(profiles, ensure_ascii=False, indent=2), encoding="utf-8")
+        _write_bin("profiles", profiles)
         return profiles
 
 
 def load_accounts() -> dict:
-    if not ACCOUNTS_FILE.exists():
-        return {}
     try:
-        raw = json.loads(ACCOUNTS_FILE.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
+        raw = _read_bin("accounts")
+    except Exception:
+        raw = None
     return raw if isinstance(raw, dict) else {}
 
 
@@ -3551,9 +3617,7 @@ def save_account(name: str, data: dict) -> None:
         if "pwHash" not in data and "pwHash" in existing:
             data["pwHash"] = existing["pwHash"]
         accounts[name] = data
-        ACCOUNTS_FILE.write_text(
-            json.dumps(accounts, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        _write_bin("accounts", accounts)
 
 
 def render_html() -> bytes:
@@ -3675,10 +3739,11 @@ def guess_ip() -> str:
 
 
 def parse_args():
+    import os
     p = argparse.ArgumentParser(description="Arena Constitucional")
-    p.add_argument("--host", default="127.0.0.1")
-    p.add_argument("--port", type=int, default=8000)
-    p.add_argument("--no-browser", action="store_true")
+    p.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"))
+    p.add_argument("--port", type=int, default=int(os.environ.get("PORT", 10000)))
+    p.add_argument("--no-browser", action="store_true", default=True)
     return p.parse_args()
 
 
