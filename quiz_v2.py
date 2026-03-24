@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import socket
 import threading
 import urllib.request
 import urllib.error
+import urllib.parse
 import webbrowser
 from datetime import datetime, date
 from http import HTTPStatus
@@ -16,81 +18,38 @@ TITLE        = "Guardiao da Constituicao: Arena Constitucional"
 LOCK         = threading.Lock()
 RANKING_LIMIT = 50
 
-# ── JSONBIN.IO PERSISTENCIA ───────────────────────────────────────────────────
-# Armazena ranking, perfis e contas na nuvem gratuitamente.
-# Crie uma conta em https://jsonbin.io e substitua a chave abaixo.
-JSONBIN_API_KEY = "$2a$10$OuuN55l8wWlXSH5wMV8FDODgDhA4wuCz1FHh66mPGAtybZabzBx7q"
-JSONBIN_BASE    = "https://api.jsonbin.io/v3/b"
+# ── SUPABASE PERSISTENCIA ─────────────────────────────────────────────────────
+# Banco de dados gratuito e confiavel.
+# Configure no Render em Environment:
+#   SUPABASE_URL = https://SEU-PROJETO.supabase.co
+#   SUPABASE_KEY = sua-anon-key
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 
-# IDs dos bins (preenchidos automaticamente na primeira execucao)
-_BIN_IDS: dict = {}
-_BIN_IDS_FILE = Path(__file__).with_name("quiz_bin_ids.json")
-
-def _bin_ids_load() -> dict:
-    """Carrega IDs dos bins do arquivo local (cache)."""
-    if _BIN_IDS_FILE.exists():
-        try:
-            return json.loads(_BIN_IDS_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    return {}
-
-def _bin_ids_save(ids: dict) -> None:
-    try:
-        _BIN_IDS_FILE.write_text(json.dumps(ids, ensure_ascii=False), encoding="utf-8")
-    except Exception:
-        pass
-
-def _jsonbin_request(method: str, url: str, data=None) -> dict | None:
-    """Faz uma requisicao HTTP para o JSONBin."""
+def _supa(method: str, table: str, data=None, params: str = "") -> list | dict | None:
+    """Faz uma requisicao REST para o Supabase."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        print("AVISO: SUPABASE_URL ou SUPABASE_KEY nao configurados.")
+        return None
+    url = f"{SUPABASE_URL}/rest/v1/{table}{params}"
     headers = {
-        "Content-Type": "application/json",
-        "X-Master-Key": JSONBIN_API_KEY,
-        "X-Bin-Private": "false",
+        "apikey":        SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type":  "application/json",
+        "Prefer":        "return=representation,resolution=merge-duplicates",
     }
     body = json.dumps(data, ensure_ascii=False).encode("utf-8") if data is not None else None
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except Exception:
+            raw = resp.read().decode("utf-8")
+            return json.loads(raw) if raw.strip() else []
+    except urllib.error.HTTPError as e:
+        print(f"Supabase erro {e.code}: {e.read().decode()}")
         return None
-
-def _get_bin(name: str) -> str | None:
-    """Retorna o ID do bin para 'name', criando se nao existir."""
-    global _BIN_IDS
-    if not _BIN_IDS:
-        _BIN_IDS = _bin_ids_load()
-    if name in _BIN_IDS:
-        return _BIN_IDS[name]
-    # Cria um novo bin com dados iniciais vazios
-    initial = [] if name == "ranking" else {}
-    result = _jsonbin_request("POST", JSONBIN_BASE, initial)
-    if result and "metadata" in result:
-        bin_id = result["metadata"]["id"]
-        _BIN_IDS[name] = bin_id
-        _bin_ids_save(_BIN_IDS)
-        return bin_id
-    return None
-
-def _read_bin(name: str):
-    """Le o conteudo de um bin."""
-    bin_id = _get_bin(name)
-    if not bin_id:
+    except Exception as e:
+        print(f"Supabase erro: {e}")
         return None
-    result = _jsonbin_request("GET", f"{JSONBIN_BASE}/{bin_id}/latest")
-    if result and "record" in result:
-        return result["record"]
-    return None
-
-def _write_bin(name: str, data) -> bool:
-    """Escreve dados em um bin."""
-    bin_id = _get_bin(name)
-    if not bin_id:
-        return False
-    result = _jsonbin_request("PUT", f"{JSONBIN_BASE}/{bin_id}", data)
-    return result is not None
-
 # read = seconds to read question before options appear
 # answer = seconds to answer after options appear
 LEVELS = [
@@ -102,17 +61,17 @@ LEVELS = [
 ]
 
 QUESTIONS = [
-    # ── NIVEL 1 ────────────────────────────────────────────────────────────────
-    {"level":1,"q":"O Art. 5, paragrafo 1, da Constituicao de 1988 estabelece que as normas definidoras dos direitos e garantias fundamentais possuem:","o":["Aplicacao imediata","Aplicacao condicionada a lei complementar","Aplicacao apenas subsidiaria","Aplicacao restrita ao Judiciario"],"a":0,"hint":"A Constituicao quis maximizar a eficacia dos direitos fundamentais.","ref":"Art. 5, §1","note":"As normas definidoras dos direitos e garantias fundamentais tem aplicacao imediata.","exp":"O dispositivo afasta a ideia de que direitos fundamentais dependem sempre de regulamentacao para produzir efeitos."},
-    {"level":1,"q":"Tratados e convencoes internacionais sobre direitos humanos aprovados em cada Casa do Congresso, em dois turnos, por tres quintos dos votos, equivalem a:","o":["Lei ordinaria federal","Lei complementar federal","Emenda constitucional","Decreto autonomo"],"a":2,"hint":"A Constituicao criou um procedimento reforcado para certos tratados de direitos humanos.","ref":"Art. 5, §3","note":"O texto constitucional equipara esses tratados a emendas constitucionais.","exp":"Nao basta tratar de direitos humanos; o tratado precisa cumprir o rito qualificado previsto na propria Constituicao."},
-    {"level":1,"q":"O Art. 5, paragrafo 2, indica que os direitos e garantias expressos na Constituicao:","o":["Formam rol taxativo e exaustivo","Excluem direitos oriundos de tratados","Nao excluem outros decorrentes do regime, dos principios e dos tratados adotados pelo Brasil","Dependem de lei para serem reconhecidos"],"a":2,"hint":"O sistema constitucional brasileiro e materialmente aberto.","ref":"Art. 5, §2","note":"O rol de direitos fundamentais nao e fechado nem puramente enumerativo.","exp":"A Constituicao admite direitos materialmente fundamentais fora do texto literal do caput e dos incisos do Art. 5."},
-    {"level":1,"q":"Qual materia e protegida como clausula petrea pelo Art. 60, paragrafo 4?","o":["Direitos e garantias individuais","Plano plurianual","Competencia residual dos municipios","Estrutura administrativa de ministerios"],"a":0,"hint":"A resposta protege o nucleo duro do constitucionalismo liberal-democratico.","ref":"Art. 60, §4","note":"Direitos e garantias individuais nao podem ser abolidos sequer por emenda.","exp":"A Constituicao impede reformas que ataquem o nucleo essencial de direitos e garantias, protegendo a ordem constitucional contra autodestruicao."},
+    # â”€â”€ NIVEL 1 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    {"level":1,"q":"O Art. 5, paragrafo 1, da Constituicao de 1988 estabelece que as normas definidoras dos direitos e garantias fundamentais possuem:","o":["Aplicacao imediata","Aplicacao condicionada a lei complementar","Aplicacao apenas subsidiaria","Aplicacao restrita ao Judiciario"],"a":0,"hint":"A Constituicao quis maximizar a eficacia dos direitos fundamentais.","ref":"Art. 5, Â§1","note":"As normas definidoras dos direitos e garantias fundamentais tem aplicacao imediata.","exp":"O dispositivo afasta a ideia de que direitos fundamentais dependem sempre de regulamentacao para produzir efeitos."},
+    {"level":1,"q":"Tratados e convencoes internacionais sobre direitos humanos aprovados em cada Casa do Congresso, em dois turnos, por tres quintos dos votos, equivalem a:","o":["Lei ordinaria federal","Lei complementar federal","Emenda constitucional","Decreto autonomo"],"a":2,"hint":"A Constituicao criou um procedimento reforcado para certos tratados de direitos humanos.","ref":"Art. 5, Â§3","note":"O texto constitucional equipara esses tratados a emendas constitucionais.","exp":"Nao basta tratar de direitos humanos; o tratado precisa cumprir o rito qualificado previsto na propria Constituicao."},
+    {"level":1,"q":"O Art. 5, paragrafo 2, indica que os direitos e garantias expressos na Constituicao:","o":["Formam rol taxativo e exaustivo","Excluem direitos oriundos de tratados","Nao excluem outros decorrentes do regime, dos principios e dos tratados adotados pelo Brasil","Dependem de lei para serem reconhecidos"],"a":2,"hint":"O sistema constitucional brasileiro e materialmente aberto.","ref":"Art. 5, Â§2","note":"O rol de direitos fundamentais nao e fechado nem puramente enumerativo.","exp":"A Constituicao admite direitos materialmente fundamentais fora do texto literal do caput e dos incisos do Art. 5."},
+    {"level":1,"q":"Qual materia e protegida como clausula petrea pelo Art. 60, paragrafo 4?","o":["Direitos e garantias individuais","Plano plurianual","Competencia residual dos municipios","Estrutura administrativa de ministerios"],"a":0,"hint":"A resposta protege o nucleo duro do constitucionalismo liberal-democratico.","ref":"Art. 60, Â§4","note":"Direitos e garantias individuais nao podem ser abolidos sequer por emenda.","exp":"A Constituicao impede reformas que ataquem o nucleo essencial de direitos e garantias, protegendo a ordem constitucional contra autodestruicao."},
     {"level":1,"q":"A afirmacao de que todo poder emana do povo e por ele sera exercido diretamente ou por representantes eleitos traduz qual vetor constitucional?","o":["Soberania popular","Separacao rigida de poderes","Legalidade estrita tributaria","Federalismo cooperativo"],"a":0,"hint":"A regra conecta legitimidade do poder e democracia.","ref":"Art. 1, paragrafo unico","note":"A origem do poder politico e popular, e nao burocratica.","exp":"O dispositivo funda o Estado Democratico de Direito em uma base de legitimidade popular."},
     {"level":1,"q":"No plano dogmatico, a afirmacao correta sobre direitos fundamentais e:","o":["Sao absolutos em qualquer colisao","Tem eficacia apenas nas relacoes Estado-individuo","Podem irradiar efeitos tambem nas relacoes privadas","Valem apenas para brasileiros natos"],"a":2,"hint":"Pense na eficacia horizontal dos direitos fundamentais.","ref":"Art. 5 e teoria da eficacia horizontal","note":"A protecao dos direitos fundamentais pode repercutir tambem em relacoes entre particulares.","exp":"A leitura contemporanea da Constituicao reconhece que direitos fundamentais tambem condicionam relacoes privadas em maior ou menor grau."},
     {"level":1,"q":"A leitura contemporanea do principio da igualdade autoriza concluir que:","o":["A Constituicao so admite igualdade formal","Tratamentos desiguais sao sempre inconstitucionais","A igualdade pode justificar diferenciacoes normativas quando fundadas em criterio constitucionalmente legitimo","A igualdade impede qualquer politica publica de inclusao"],"a":2,"hint":"A igualdade material busca reduzir assimetrias injustificadas.","ref":"Art. 5, caput","note":"A igualdade constitucional nao se reduz a uniformidade cega.","exp":"A isonomia constitucional permite diferenciacoes justificadas para promover equilibrio e impedir discriminacoes arbitrarias."},
     {"level":1,"q":"Segundo a doutrina e a jurisprudencia do STF, direitos fundamentais podem ser restringidos por lei desde que:","o":["A restricao seja total e definitiva","Preservem o nucleo essencial e respeitem a proporcionalidade","O Executivo concorde com a restricao","A restricao abranja apenas estrangeiros"],"a":1,"hint":"Ha um limite que nem o legislador pode ultrapassar.","ref":"Art. 5 e teoria do nucleo essencial","note":"A restricao legislativa de direito fundamental deve respeitar o nucleo essencial e o principio da proporcionalidade.","exp":"O STF consagrou que leis que esvaziem por completo o conteudo de um direito fundamental sao inconstitucionais por violacao ao seu nucleo essencial."},
     {"level":1,"q":"A dignidade da pessoa humana na Constituicao de 1988 esta posicionada como:","o":["Direito subjetivo passivel de ponderacao ordinaria","Fundamento da Republica Federativa do Brasil","Principio administrativo restrito ao funcionalismo publico","Norma programatica sem eficacia juridica propria"],"a":1,"hint":"Observe onde a Constituicao posiciona esse valor: no titulo sobre os fundamentos.","ref":"Art. 1, III","note":"A dignidade da pessoa humana e fundamento da Republica, com densidade normativa propria.","exp":"Ao ser erigida como fundamento, a dignidade deixa de ser apenas diretriz e passa a condicionar toda a ordem juridica."},
-    # ── NIVEL 2 ────────────────────────────────────────────────────────────────
+    # â”€â”€ NIVEL 2 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     {"level":2,"q":"Qual afirmacao esta de acordo com a liberdade de manifestacao do pensamento na Constituicao de 1988?","o":["E livre, mas o anonimato e vedado","Depende de licenca administrativa","Admite censura previa em contexto politico sensivel","So protege opinioes favoraveis a ordem constitucional"],"a":0,"hint":"A Constituicao protege a liberdade, mas exige responsabilidade.","ref":"Art. 5, IV","note":"A manifestacao do pensamento e livre, vedado o anonimato.","exp":"A vedacao ao anonimato busca permitir responsabilizacao posterior, sem abrir espaco para censura previa."},
     {"level":2,"q":"A dissolucao compulsoria de associacao civil somente pode ocorrer:","o":["Por ato do Poder Executivo em caso de interesse publico","Por decisao judicial com transito em julgado","Por deliberacao do Ministerio Publico","Por decreto legislativo simples"],"a":1,"hint":"A Constituicao protege fortemente a liberdade associativa.","ref":"Art. 5, XIX","note":"A dissolucao compulsoria depende de decisao judicial transitada em julgado.","exp":"A ordem constitucional nao admite que o Executivo desconstitua associacoes por mera conveniencia politica ou administrativa."},
     {"level":2,"q":"Quanto a inviolabilidade de domicilio, a regra correta e:","o":["A ordem judicial autoriza ingresso forcado a qualquer hora","A entrada e sempre livre em investigacao criminal","A casa e asilo inviolavel, salvo flagrante, desastre, socorro, ou ordem judicial durante o dia","A policia pode ingressar a noite com autorizacao verbal de delegado"],"a":2,"hint":"A excecao da ordem judicial tem limitacao temporal expressa.","ref":"Art. 5, XI","note":"A ordem judicial nao autoriza, por si so, ingresso noturno.","exp":"O texto constitucional foi preciso ao limitar a execucao de ordem judicial ao periodo diurno, salvo outras hipoteses constitucionais."},
@@ -122,7 +81,7 @@ QUESTIONS = [
     {"level":2,"q":"Quanto a liberdade de associacao, a alternativa correta e:","o":["A criacao de associacoes depende de autorizacao estatal","E plena a liberdade de associacao para fins licitos, vedada a de carater paramilitar","Associacoes podem ser dissolvidas por ato do prefeito","A liberdade associativa nao alcanca entidades sindicais"],"a":1,"hint":"A Constituicao dispensa autorizacao, mas nao tolera fins ilicitos ou carater paramilitar.","ref":"Art. 5, XVII e XVIII","note":"Associacoes licitas independem de autorizacao e o Estado nao pode interferir em seu funcionamento, salvo limites constitucionais.","exp":"O texto constitucional protege a autonomia associativa, mas exclui fins ilicitos e estruturas paramilitares."},
     {"level":2,"q":"A liberdade de crenca e culto religioso na Constituicao implica:","o":["Apenas tolerancia passiva do Estado","Livre exercicio dos cultos religiosos e protecao aos locais de culto e liturgias","Financiamento obrigatorio de toda religiao pelo Estado","Proibicao de simbolos religiosos em espacos publicos"],"a":1,"hint":"A liberdade religiosa tem dimensao positiva e negativa.","ref":"Art. 5, VI","note":"O livre exercicio dos cultos religiosos e garantido, e o Estado deve proteger os locais de culto e suas liturgias.","exp":"A Constituicao nao se limita a tolerar religiao; ela garante o exercicio ativo e protege os espacos de culto."},
     {"level":2,"q":"O direito de propriedade na Constituicao de 1988 esta condicionado a:","o":["Uso exclusivo do titular, sem restricoes","Atendimento de sua funcao social","Autorizacao anual do Municipio","Registro obrigatorio em cartorio para todos os bens"],"a":1,"hint":"A Constituicao nao reconhece propriedade como direito absoluto e desvinculado de responsabilidade social.","ref":"Art. 5, XXIII","note":"A propriedade atendera sua funcao social.","exp":"A funcao social e condicao intrinseca do exercicio do direito de propriedade, nao mera restricao externa."},
-    # ── NIVEL 3 ────────────────────────────────────────────────────────────────
+    # â”€â”€ NIVEL 3 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     {"level":3,"q":"No mandado de seguranca coletivo, possuem legitimidade ativa, entre outros:","o":["Apenas a Defensoria Publica e o Ministerio Publico","Partido politico com representacao no Congresso e entidade associativa constituida ha pelo menos um ano, em defesa de seus membros","Qualquer pessoa fisica em nome do povo","Somente sindicatos de servidores publicos"],"a":1,"hint":"A legitimidade coletiva tem rol constitucional especifico.","ref":"Art. 5, LXX","note":"A Constituicao legitima partido com representacao no Congresso, sindicato, entidade de classe e associacao nos termos constitucionais.","exp":"O mandado de seguranca coletivo nao foi aberto a qualquer individuo, mas a sujeitos coletivos com representatividade definida."},
     {"level":3,"q":"A acao popular pode ser proposta por:","o":["Qualquer eleitor, na qualidade de cidadao","Qualquer residente no territorio nacional","Apenas o Ministerio Publico","Apenas partido politico com representacao no Congresso"],"a":0,"hint":"A acao popular e instrumento de cidadania ativa, nao mera legitimidade difusa aberta a todos indistintamente.","ref":"Art. 5, LXXIII","note":"A legitimidade exige cidadania, e nao simples residencia.","exp":"A Constituicao atribui ao cidadao, e nao a qualquer pessoa, o poder de acionar a jurisdicao para combater ato lesivo ao patrimonio publico."},
     {"level":3,"q":"Quanto ao habeas corpus, e correto afirmar que:","o":["Serve para proteger patrimonio publico","So pode ser impetrado por advogado regularmente inscrito","Protege a liberdade de locomocao contra ilegalidade ou abuso de poder","Exige custas processuais e deposito previo"],"a":2,"hint":"Trata-se do remedio constitucional historicamente ligado ao ir e vir.","ref":"Art. 5, LXVIII","note":"O habeas corpus e gratuito e vocacionado a tutelar a liberdade de locomocao.","exp":"Seu objeto e estrito: nao protege qualquer direito, mas especificamente a liberdade de locomocao ameacada ou violada."},
@@ -131,7 +90,7 @@ QUESTIONS = [
     {"level":3,"q":"O direito de peticao aos Poderes Publicos em defesa de direitos ou contra ilegalidade ou abuso de poder e exercido:","o":["Mediante pagamento de taxa administrativa","Independentemente do pagamento de taxas","Apenas por advogado","Somente perante o Poder Judiciario"],"a":1,"hint":"A Constituicao trata essa garantia como franqueada ao administrado sem custo.","ref":"Art. 5, XXXIV, a","note":"O direito de peticao nao se condiciona ao recolhimento de taxas.","exp":"A regra busca impedir barreiras economicas ao acesso do individuo aos Poderes Publicos para defesa de direitos."},
     {"level":3,"q":"Na acao popular, salvo comprovada ma-fe, o autor fica isento de:","o":["Custas judiciais e onus da sucumbencia","Qualquer comparecimento processual","Prova documental minima","Capacidade processual"],"a":0,"hint":"A Constituicao buscou incentivar a fiscalizacao cidada sem risco economico excessivo.","ref":"Art. 5, LXXIII","note":"A isencao e afastada em caso de ma-fe.","exp":"A acao popular foi desenhada para permitir controle civico do patrimonio publico e da moralidade sem desestimular o cidadao por receio financeiro."},
     {"level":3,"q":"O mandado de seguranca individual protege direito liquido e certo nao amparado por habeas corpus ou habeas data, quando o responsavel pela ilegalidade ou abuso e:","o":["Qualquer particular com poder economico relevante","Autoridade publica ou agente de pessoa juridica no exercicio de atribuicoes do Poder Publico","Unicamente o Presidente da Republica","Apenas o Ministerio Publico Federal"],"a":1,"hint":"O polo passivo do mandado de seguranca tem definicao constitucional funcional.","ref":"Art. 5, LXIX","note":"O mandado de seguranca protege contra ato de autoridade publica ou de agente em exercicio de funcao publica.","exp":"O conceito constitucional de autoridade coatora e funcional, nao organico, alcancando agentes privados quando exercem delegacao publica."},
-    # ── NIVEL 4 ────────────────────────────────────────────────────────────────
+    # â”€â”€ NIVEL 4 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     {"level":4,"q":"A respeito da saude no texto constitucional, assinale a alternativa correta:","o":["A saude e servico facultativo do Estado","A saude e direito de todos e dever do Estado, garantida mediante politicas sociais e economicas que visem a reducao do risco de doenca e ao acesso universal e igualitario","A saude e direito apenas de contribuintes da seguridade social","A saude publica depende de autorizacao legislativa anual para existir"],"a":1,"hint":"A Constituicao vincula saude, risco e acesso universal.","ref":"Art. 196","note":"O direito a saude tem densidade normativa propria e nao e mera diretriz politica vazia.","exp":"O texto constitucional define a saude como direito fundamental social dotado de exigibilidade e vinculado a acesso universal e igualitario."},
     {"level":4,"q":"Entre os direitos dos trabalhadores urbanos e rurais, a irredutibilidade do salario admite excecao:","o":["Por ato unilateral do empregador em crise financeira","Por convencao ou acordo coletivo","Por decreto do Poder Executivo","Por regulamento interno da empresa"],"a":1,"hint":"A flexibilizacao depende de negociacao coletiva constitucionalmente reconhecida.","ref":"Art. 7, VI","note":"A irredutibilidade salarial nao e absoluta, mas a excecao tem forma constitucionalmente delimitada.","exp":"A Constituicao admite reducao salarial apenas dentro de arranjo coletivo, afastando imposicoes unilaterais do empregador ou do Estado."},
     {"level":4,"q":"Qual opcao corresponde a direito social expressamente previsto no Art. 6 apos evolucao do texto constitucional?","o":["Transporte","Protecao cambial","Intervencao administrativa","Resgate bancario"],"a":0,"hint":"Esse direito foi acrescido ao rol por emenda constitucional.","ref":"Art. 6","note":"O transporte integra o rol formal dos direitos sociais.","exp":"O Art. 6 sofreu ampliacoes ao longo do tempo, e o transporte passou a ser expressamente reconhecido como direito social."},
@@ -140,7 +99,7 @@ QUESTIONS = [
     {"level":4,"q":"O seguro-desemprego, em caso de desemprego involuntario, figura no texto constitucional como:","o":["Favor administrativo eventual","Direito dos trabalhadores urbanos e rurais","Beneficio exclusivo de servidor estatutario","Prestacao civil sem relevancia constitucional"],"a":1,"hint":"A Constituicao trata a perda involuntaria do emprego como risco social merecedor de protecao.","ref":"Art. 7, II","note":"O seguro-desemprego e garantia constitucional do trabalhador.","exp":"A previsao constitucional integra a rede minima de protecao contra vulnerabilidades associadas ao trabalho."},
     {"level":4,"q":"A assistencia social na Constituicao sera prestada a quem dela necessitar:","o":["Apenas mediante contribuicao previa ao sistema","Independentemente de contribuicao a seguridade social","Somente a trabalhadores formalmente registrados","Mediante comprovacao de renda minima por tres anos"],"a":1,"hint":"A assistencia social difere da previdencia exatamente neste ponto.","ref":"Art. 203","note":"A assistencia social independe de contribuicao previa.","exp":"A Constituicao distingue assistencia social de previdencia: aquela nao exige contribuicao; esta sim."},
     {"level":4,"q":"A protecao ao trabalho noturno na Constituicao se expressa, entre outros pontos, por:","o":["Remuneracao do trabalho noturno superior a do diurno","Livre supressao de adicional por contrato individual","Equiparacao obrigatoria entre noturno e diurno sem adicional","Proibicao absoluta de trabalho noturno"],"a":0,"hint":"A resposta esta no rol do Art. 7.","ref":"Art. 7, IX","note":"A Constituicao assegura remuneracao do trabalho noturno superior a do diurno.","exp":"O adicional noturno traduz reconhecimento constitucional do maior desgaste social e biologico associado ao labor noturno."},
-    # ── NIVEL 5 ────────────────────────────────────────────────────────────────
+    # â”€â”€ NIVEL 5 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     {"level":5,"q":"Uma autoridade municipal exige licenca previa para passeata pacifica, sem armas, em praca publica, ainda que os organizadores tenham apresentado aviso previo. A exigencia e:","o":["Constitucional, porque toda reuniao publica depende de autorizacao","Inconstitucional, porque a liberdade de reuniao exige previo aviso, nao licenca","Constitucional apenas se o tema da manifestacao for politico","Constitucional apenas se a praca for bem publico municipal"],"a":1,"hint":"O aviso organiza o espaco publico; a licenca converte liberdade em permissao estatal.","ref":"Art. 5, XVI","note":"A Constituicao exige previo aviso, nao autorizacao.","exp":"Transformar reuniao pacifica em atividade dependente de licenca esvazia uma liberdade publica expressamente protegida."},
     {"level":5,"q":"Com ordem judicial valida, policiais ingressam as 23h na residencia de investigado apenas para cumprir busca domiciliar, sem flagrante, sem desastre e sem pedido de socorro. A medida e:","o":["Constitucional, porque a ordem judicial afasta qualquer limite horario","Inconstitucional, porque a ordem judicial, por si so, legitima ingresso apenas durante o dia","Constitucional, porque toda busca criminal dispensa as restricoes do Art. 5","Constitucional, desde que haja investigacao de crime hediondo"],"a":1,"hint":"A ordem judicial nao e cheque em branco para ingresso noturno.","ref":"Art. 5, XI","note":"Sem outra excecao constitucional, a ordem judicial se cumpre durante o dia.","exp":"A garantia domiciliar estabelece limite expresso para o cumprimento de ordem judicial, preservando a intimidade domiciliar noturna."},
     {"level":5,"q":"Brasileiro naturalizado e acusado de comprovado envolvimento com trafico ilicito de entorpecentes apos a naturalizacao. Diante do texto constitucional, a extradicao:","o":["E vedada em qualquer hipotese apos a naturalizacao","E possivel, porque a Constituicao admite extradicao do naturalizado por comprovado envolvimento com trafico ilicito de entorpecentes","So seria possivel se o crime fosse politico","Depende de previa cassacao da naturalizacao pelo Executivo"],"a":1,"hint":"A regra do naturalizado tem duas hipoteses constitucionais especificas.","ref":"Art. 5, LI","note":"O trafico ilicito de entorpecentes aparece expressamente como excecao constitucional.","exp":"O texto constitucional trata o naturalizado de forma distinta do nato e preve excecao expressa para trafico ilicito de entorpecentes."},
@@ -149,19 +108,19 @@ QUESTIONS = [
     {"level":5,"q":"Grupo de servidores tem direito constitucional inviabilizado ha anos porque o legislador nao editou a norma regulamentadora indispensavel. A medida constitucional mais adequada e:","o":["Habeas data","Mandado de injuncao","Acao popular","Habeas corpus"],"a":1,"hint":"O foco aqui e a omissao normativa que bloqueia direito.","ref":"Art. 5, LXXI","note":"O mandado de injuncao foi concebido para enfrentar a omissao regulamentadora constitucionalmente relevante.","exp":"Quando a falta de norma inviabiliza direito ou liberdade constitucional, o remedio adequado e o mandado de injuncao."},
     {"level":5,"q":"Autoridade policial determina abertura generalizada de correspondencia fisica de servidores para apuracao administrativa, sem ordem judicial. A medida e:","o":["Constitucional, por se tratar de servidores publicos","Inconstitucional, porque viola a inviolabilidade da correspondencia","Constitucional, desde que haja sindicancia interna","Constitucional, se a correspondencia estiver no local de trabalho"],"a":1,"hint":"A inviolabilidade da correspondencia nao desaparece por vinculacao funcional ao Estado.","ref":"Art. 5, XII","note":"A protecao constitucional do sigilo de correspondencia nao cede a controles administrativos genericos.","exp":"A administracao nao pode afastar, por mera conveniencia investigativa, garantia constitucional de sigilo de correspondencia."},
     {"level":5,"q":"Lei municipal proibe reuniao em praca historica da cidade nos fins de semana, alegando preservacao do patrimonio. Considerando o Art. 5, XVI, essa restricao e:","o":["Plenamente constitucional, pois patrimonio historico justifica qualquer restricao","Inconstitucional, pois a Constituicao nao permite restricoes locais a liberdade de reuniao","Potencialmente inconstitucional se a restricao generalizada anular o nucleo essencial da liberdade de reuniao","Constitucional apenas se aprovada por referendum popular"],"a":2,"hint":"A colisao entre liberdade de reuniao e preservacao do patrimonio exige proporcionalidade.","ref":"Art. 5, XVI e Art. 216","note":"Restricoes a direitos fundamentais devem ser proporcionais e nao podem esvaziar o nucleo essencial da garantia.","exp":"A analise constitucional exige ponderacao: restricoes generalizadas que inviabilizam o exercicio da liberdade sao inconstitucionais, ainda que o fim seja legitimo."},
-    # ── V/F QUESTIONS ──────────────────────────────────────────────────────
+    # â”€â”€ V/F QUESTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     {"level":1,"type":"tf","q":"Direitos fundamentais sao absolutos e nao admitem nenhuma restricao.","o":["Verdadeiro","Falso"],"a":1,"hint":"Pense na possibilidade de colisao entre direitos fundamentais.","ref":"Art. 5 e doutrina","note":"Direitos fundamentais nao sao absolutos; podem ser restringidos proporcionalmente.","exp":"A doutrina e o STF reconhecem que direitos fundamentais podem colidir entre si, exigindo ponderacao e proporcionalidade.","diff":"easy"},
     
-    # ── GOLDEN QUESTIONS ──────────────────────────────────────────────
+    # â”€â”€ GOLDEN QUESTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     {"level":2,"q":"O principio da presuncao de inocencia, previsto no Art. 5, LVII, da CF/88, estabelece que ninguem sera considerado culpado ate:","o":["A denuncia do Ministerio Publico","O transito em julgado de sentenca penal condenatoria","A prisao em flagrante","O indiciamento policial"],"a":1,"hint":"A Constituicao protege o acusado ate o esgotamento das vias recursais.","ref":"Art. 5, LVII","note":"Ninguem sera considerado culpado ate o transito em julgado de sentenca penal condenatoria.","exp":"O principio da presuncao de inocencia e clausula petrea e garante que a culpa so se estabelece definitivamente apos o transito em julgado da sentenca condenatoria.","diff":"hard",    "golden":True},
         {"level":4,"q":"A Constituicao Federal de 1988 preve que a educacao e direito de todos e dever do Estado e da familia, devendo ser promovida e incentivada com a colaboracao da sociedade. Qual artigo fundamenta essa disposicao?","o":["Art. 196","Art. 205","Art. 215","Art. 225"],"a":1,"hint":"Este artigo inaugura o capitulo sobre educacao na CF/88.","ref":"Art. 205","note":"A educacao e direito de todos e dever do Estado e da familia.","exp":"O Art. 205 estabelece o dever compartilhado entre Estado, familia e sociedade na promocao da educacao, visando o pleno desenvolvimento da pessoa, seu preparo para a cidadania e qualificacao para o trabalho.","diff":"hard","golden":True},
-    # ── BOSS QUESTIONS ────────────────────────────────────────────────
+    # â”€â”€ BOSS QUESTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     {"level":1,"q":"CASO PRATICO: Um cidadao teve sua residencia invadida por policiais as 23h, sem mandado judicial e sem flagrante delito. Com base na CF/88, analise: a invasao foi constitucional?","o":["Sim, pois a policia tem poder de investigacao","Nao, pois fora das hipoteses constitucionais (flagrante, desastre, socorro) a entrada depende de ordem judicial durante o DIA","Sim, desde que haja autorizacao verbal do delegado","Nao, porque nenhuma entrada em domicilio e permitida"],"a":1,"hint":"Atencao ao periodo do dia e as excecoes constitucionais.","ref":"Art. 5, XI","note":"A casa e asilo inviolavel. A entrada com ordem judicial so e permitida durante o dia.","exp":"A CF/88 estabelece que o ingresso em domicilio alheio sem consentimento so pode ocorrer em flagrante delito, desastre, socorro, ou por determinacao judicial DURANTE O DIA. A invasao noturna sem mandado e flagrante viola diretamente o Art. 5, XI.","diff":"hard",    "boss":True},
-        {"level":2,"q":"CASO PRATICO: O Congresso aprovou emenda constitucional que permite a pena de morte para crimes hediondos. Esta emenda e constitucional?","o":["Sim, pois o Congresso tem poder constituinte derivado","Nao, pois o direito a vida e clausula petrea e nao pode ser abolido por emenda","Sim, desde que aprovada por maioria absoluta","Depende de referendum popular"],"a":1,"hint":"Considere os limites materiais ao poder de reforma constitucional.","ref":"Art. 60, §4, IV","note":"Os direitos e garantias individuais sao clausulas petreas.","exp":"O Art. 60, §4, IV proibe emendas tendentes a abolir direitos e garantias individuais. O direito a vida (Art. 5, caput) e clausula petrea. Uma emenda que institua pena de morte fora das hipoteses ja previstas (guerra declarada) seria inconstitucional por violar o nucleo imodificavel da Constituicao.","diff":"hard","boss":True},
+        {"level":2,"q":"CASO PRATICO: O Congresso aprovou emenda constitucional que permite a pena de morte para crimes hediondos. Esta emenda e constitucional?","o":["Sim, pois o Congresso tem poder constituinte derivado","Nao, pois o direito a vida e clausula petrea e nao pode ser abolido por emenda","Sim, desde que aprovada por maioria absoluta","Depende de referendum popular"],"a":1,"hint":"Considere os limites materiais ao poder de reforma constitucional.","ref":"Art. 60, Â§4, IV","note":"Os direitos e garantias individuais sao clausulas petreas.","exp":"O Art. 60, Â§4, IV proibe emendas tendentes a abolir direitos e garantias individuais. O direito a vida (Art. 5, caput) e clausula petrea. Uma emenda que institua pena de morte fora das hipoteses ja previstas (guerra declarada) seria inconstitucional por violar o nucleo imodificavel da Constituicao.","diff":"hard","boss":True},
         {"level":3,"q":"CASO PRATICO: Um juiz determinou a interceptacao telefonica de um suspeito por 60 dias, sem renovacao fundamentada. A interceptacao e legal?","o":["Sim, o juiz tem ampla discricionariedade","Nao, a Lei 9.296/96 limita a interceptacao a 15 dias, renovavel por igual periodo com fundamentacao","Sim, desde que haja inquerito policial aberto","Depende da gravidade do crime"],"a":1,"hint":"A interceptacao telefonica tem prazo legal definido e exige fundamentacao para renovacao.","ref":"Art. 5, XII e Lei 9.296/96","note":"A interceptacao telefonica tem prazo maximo de 15 dias, renovavel por decisao fundamentada.","exp":"A Lei 9.296/96 regulamenta o Art. 5, XII da CF/88. A interceptacao so pode durar 15 dias, renovavel por igual periodo mediante decisao judicial fundamentada. Uma interceptacao de 60 dias sem renovacao fundamentada viola tanto a lei quanto a garantia constitucional do sigilo das comunicacoes.","diff":"hard","boss":True},
         {"level":4,"q":"CASO PRATICO: Um municipio criou lei proibindo manifestacoes publicas em todas as pracas da cidade. Analise a constitucionalidade dessa lei.","o":["Constitucional, pois o municipio tem autonomia legislativa","Inconstitucional, pois viola a liberdade de reuniao (Art. 5, XVI) que garante reuniao pacifica em locais abertos independente de autorizacao","Constitucional, se houver justificativa de ordem publica","Depende de regulamentacao federal"],"a":1,"hint":"A liberdade de reuniao e direito fundamental que independe de autorizacao estatal.","ref":"Art. 5, XVI","note":"Todos podem reunir-se pacificamente, sem armas, em locais abertos ao publico, independentemente de autorizacao.","exp":"O Art. 5, XVI garante o direito de reuniao pacifica em locais abertos ao publico, independentemente de autorizacao, bastando previo aviso a autoridade competente. Uma lei municipal que proiba manifestacoes em todas as pracas seria inconstitucional por esvaziar o conteudo essencial desse direito fundamental.","diff":"hard","boss":True},
         {"level":5,"q":"CASO PRATICO: O STF deve julgar um caso envolvendo conflito entre liberdade de expressao e direito a honra. Um jornalista publicou reportagem com informacoes verdadeiras mas prejudiciais a reputacao de um politico. Como resolver esse conflito?","o":["A liberdade de expressao sempre prevalece sobre a honra","A honra sempre prevalece sobre a liberdade de expressao","Deve-se aplicar a tecnica da ponderacao, avaliando proporcionalidade, interesse publico e veracidade das informacoes","O caso deve ser resolvido pela legislacao infraconstitucional apenas"],"a":2,"hint":"A colisao de direitos fundamentais exige tecnica hermeneutica especifica.","ref":"Art. 5, IV, V, IX, X e principio da proporcionalidade","note":"Conflitos entre direitos fundamentais sao resolvidos pela ponderacao.","exp":"Quando dois direitos fundamentais colidem, o STF aplica a tecnica da ponderacao (proporcionalidade). Nao ha hierarquia absoluta entre direitos fundamentais. No caso, deve-se avaliar: (1) veracidade da informacao, (2) interesse publico, (3) forma da publicacao, (4) proporcionalidade da restricao. Informacoes verdadeiras sobre agentes publicos gozam de maior protecao constitucional.","diff":"hard","boss":True},
-    # ── FILL-IN-BLANK QUESTIONS ───────────────────────────────────────
+    # â”€â”€ FILL-IN-BLANK QUESTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     {"level":1,"type":"fill","q":"Complete: 'Todo poder emana do ______, que o exerce por meio de representantes eleitos ou diretamente.'","answer":"povo","hint":"Art. 1, paragrafo unico da CF/88.","ref":"Art. 1, paragrafo unico","note":"Todo poder emana do povo.","exp":"O principio da soberania popular e fundamento do Estado Democratico de Direito, estabelecendo que a legitimidade do poder politico tem origem no povo.","diff":"easy"},
     {"level":1,"type":"fill","q":"Complete: 'A Republica Federativa do Brasil tem como fundamentos: a soberania, a cidadania, a ______ da pessoa humana.'","answer":"dignidade","hint":"Art. 1, III da CF/88.","ref":"Art. 1, III","note":"A dignidade da pessoa humana e fundamento da Republica.","exp":"A dignidade da pessoa humana e um dos cinco fundamentos da Republica Federativa do Brasil, funcionando como valor-fonte de todo o ordenamento juridico.","diff":"easy"},
     {"level":2,"type":"fill","q":"Complete: 'A casa e asilo ______ do individuo, ninguem nela podendo penetrar sem consentimento do morador.'","answer":"inviolavel","hint":"Art. 5, XI da CF/88.","ref":"Art. 5, XI","note":"A casa e asilo inviolavel do individuo.","exp":"A inviolabilidade de domicilio e direito fundamental que protege a esfera de privacidade do individuo, admitindo excecoes apenas nas hipoteses taxativas da Constituicao.","diff":"easy"},
@@ -213,7 +172,7 @@ HTML = r"""<!DOCTYPE html>
 <link rel='icon' href='/icon.svg' type='image/svg+xml'>
 <title>__TITLE__</title>
 <style>
-/* ── TOKENS ─────────────────────────────────────────────────────── */
+/* â”€â”€ TOKENS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 :root{
   --bg:#04080f;--card:#0d1520;--text:#e8edf5;--muted:#7a8aaa;
   --red:#1565c0;--red-dim:rgba(21,101,192,.12);--red-border:rgba(21,101,192,.45);
@@ -233,7 +192,7 @@ body{
     linear-gradient(180deg,#02040a,#05090f 50%,#02040a);
 }
 
-/* ── ANIMATIONS ──────────────────────────────────────────────────── */
+/* â”€â”€ ANIMATIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 @keyframes fadeUp   {from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
 @keyframes fadeIn   {from{opacity:0}to{opacity:1}}
 @keyframes slideIn  {from{opacity:0;transform:translateX(-20px)}to{opacity:1;transform:none}}
@@ -247,13 +206,13 @@ body{
 @keyframes comboPop {0%{opacity:0;transform:translate(-50%,-50%) scale(.3)} 55%{transform:translate(-50%,-50%) scale(1.12)} 80%{transform:translate(-50%,-50%) scale(.97)} 100%{opacity:1;transform:translate(-50%,-50%) scale(1)}}
 @keyframes comboDie {from{opacity:1} to{opacity:0;transform:translate(-50%,-50%) scale(1.2) translateY(-30px)}}
 
-/* ── LAYOUT ──────────────────────────────────────────────────────── */
+/* â”€â”€ LAYOUT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .page{width:min(1200px,calc(100% - 20px));margin:0 auto;padding:16px 0 50px}
 .layout{display:grid;grid-template-columns:1.55fr .9fr;gap:16px;margin-top:16px}
 .stack{display:grid;gap:16px;align-content:start}
 .hidden{display:none!important}
 
-/* ── BOX ─────────────────────────────────────────────────────────── */
+/* â”€â”€ BOX â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .box{
   border:1px solid var(--red-border);
   border-radius:var(--r);
@@ -261,7 +220,7 @@ body{
   background:linear-gradient(160deg,rgba(16,16,20,.97),rgba(9,9,12,.97));
 }
 
-/* ── HERO ────────────────────────────────────────────────────────── */
+/* â”€â”€ HERO â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .hero{padding:28px 32px;position:relative;overflow:hidden;animation:fadeUp .5s ease both}
 .hero::before{
   content:'';position:absolute;right:-80px;top:-80px;
@@ -286,18 +245,18 @@ body{
 .hero-stat strong{display:block;font-size:1.45rem;color:#fff;font-weight:900}
 .hero-stat span{font-size:.8rem;color:var(--muted)}
 
-/* ── PANEL ───────────────────────────────────────────────────────── */
+/* â”€â”€ PANEL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .panel{padding:20px}
 .panel h2{font-family:Georgia,serif;font-size:1.25rem;margin-bottom:14px;color:#fff}
 
-/* ── CHIPS / PILLS ───────────────────────────────────────────────── */
+/* â”€â”€ CHIPS / PILLS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .chip,.pill{
   display:inline-flex;align-items:center;padding:5px 11px;border-radius:999px;
   background:var(--red-dim);border:1px solid rgba(21,101,192,.35);
   color:#b8d4ff;font-size:.75rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em
 }
 
-/* ── LEVEL CARDS ─────────────────────────────────────────────────── */
+/* â”€â”€ LEVEL CARDS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .levels{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:10px;margin-top:14px}
 .level-card{
   padding:14px;border-radius:14px;
@@ -311,7 +270,7 @@ body{
 .level-card h3{font-size:.92rem;color:#fff;margin:7px 0 5px}
 .level-card p{font-size:.8rem;color:var(--muted);line-height:1.6}
 
-/* ── BUTTONS ─────────────────────────────────────────────────────── */
+/* â”€â”€ BUTTONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:8px;
   border:1px solid var(--red-border);border-radius:13px;
@@ -331,14 +290,14 @@ body{
 .btn.ghost{background:rgba(255,255,255,.03);border-color:rgba(255,255,255,.1);color:var(--muted)}
 .actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
 
-/* ── HUD ─────────────────────────────────────────────────────────── */
+/* â”€â”€ HUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .hud{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:10px;margin-bottom:14px}
 .hud-box{padding:12px;border-radius:13px;background:var(--red-dim);border:1px solid rgba(21,101,192,.2)}
 .lbl{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.09em}
 .val{font-size:1.35rem;font-weight:900;color:#fff;margin-top:4px;transition:color .3s}
 .val.fire{animation:neonBlink 1s ease infinite;color:#c8a000}
 
-/* ── PROGRESS ────────────────────────────────────────────────────── */
+/* â”€â”€ PROGRESS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .prog-wrap{height:8px;border-radius:999px;background:rgba(255,255,255,.05);overflow:hidden;margin-bottom:14px}
 .prog-bar{
   height:100%;width:0%;
@@ -347,7 +306,7 @@ body{
   animation:progressPulse 2s ease infinite
 }
 
-/* ── QUESTION CARD ───────────────────────────────────────────────── */
+/* â”€â”€ QUESTION CARD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .qcard{padding:22px;margin-bottom:14px}
 .qcard.enter{animation:scaleIn .4s cubic-bezier(.22,1,.36,1) both}
 .qtop{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px}
@@ -359,7 +318,7 @@ body{
   animation:fadeUp .4s ease both
 }
 
-/* ── PHASE INDICATOR ─────────────────────────────────────────────── */
+/* â”€â”€ PHASE INDICATOR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .phase-bar{
   display:flex;align-items:center;gap:10px;
   padding:10px 16px;border-radius:12px;margin-bottom:14px;
@@ -384,7 +343,7 @@ body{
 }
 .phase-cd.urgent{color:#c8a000;animation:neonBlink .6s ease infinite}
 
-/* ── OPTIONS ─────────────────────────────────────────────────────── */
+/* â”€â”€ OPTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .options{display:grid;gap:10px}
 .option{
   width:100%;text-align:left;padding:14px 16px;border-radius:13px;
@@ -426,12 +385,12 @@ body{
 .option.no b{background:rgba(128,0,32,.2);color:#d9a0b0}
 .option.cut{opacity:.15;pointer-events:none;filter:grayscale(1)}
 
-/* ── HELPERS ─────────────────────────────────────────────────────── */
+/* â”€â”€ HELPERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .help-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;margin-top:14px}
 .help-card{padding:12px;border-radius:14px;border:1px solid rgba(21,101,192,.18);background:rgba(21,101,192,.04)}
 .help-card small{display:block;font-size:.76rem;color:var(--muted);margin-top:6px}
 
-/* ── ASSIST / FEEDBACK ───────────────────────────────────────────── */
+/* â”€â”€ ASSIST / FEEDBACK â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .info{margin-top:12px;padding:13px 16px;border-radius:13px;background:var(--red-dim);border:1px solid rgba(21,101,192,.25);color:#d0dff0;line-height:1.65;animation:fadeIn .3s ease both}
 .feedback{
   margin-top:14px;padding:18px;border-radius:15px;
@@ -448,7 +407,7 @@ function useSkip() {
   state.used.skip = true;
   if (ui.btnSkip) ui.btnSkip.disabled = true;
   playSound('skip');
-  showAssist('⏭ Pergunta pulada! Sem pontos.');
+  showAssist('â­ Pergunta pulada! Sem pontos.');
   state.answered = true;
   clearInterval(state.ticker);
   state.wrongQs.push(state.deck[state.idx]);
@@ -461,11 +420,11 @@ function useExtraTime() {
   state.used.extraTime = true;
   if (ui.btnExtraTime) ui.btnExtraTime.disabled = true;
   state.timeLeft += 15;
-  showAssist('⏱ +15 segundos adicionados!');
+  showAssist('â± +15 segundos adicionados!');
   playSound('tick');
 }
 
-/* ── RANKING ─────────────────────────────────────────────────────── */
+/* â”€â”€ RANKING â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .rank-hdr{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px}
 .ranking{display:grid;gap:8px}
 .rank-item{
@@ -483,7 +442,7 @@ function useExtraTime() {
 .rk-meta{display:block;font-size:.8rem;color:#7ab0e0;margin-top:3px}
 .rk-sub{display:block;font-size:.76rem;color:var(--muted);margin-top:2px}
 
-/* ── MEDALS ──────────────────────────────────────────────────────── */
+/* â”€â”€ MEDALS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .medal-list{display:grid;gap:8px}
 .medal{
   padding:12px;border-radius:13px;
@@ -493,7 +452,7 @@ function useExtraTime() {
 .medal strong{color:var(--gold);font-size:.9rem}
 .medal span{display:block;font-size:.78rem;color:var(--muted);margin-top:3px}
 
-/* ── MEDAL TOAST (pop-up quando ganha) ───────────────────────────── */
+/* â”€â”€ MEDAL TOAST (pop-up quando ganha) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 #medal-toasts{position:fixed;bottom:22px;right:22px;z-index:900;display:grid;gap:10px;pointer-events:none}
 .m-toast{
   padding:14px 18px;border-radius:16px;max-width:300px;
@@ -508,7 +467,7 @@ function useExtraTime() {
 .m-toast-name{font-size:.96rem;font-weight:900;color:var(--gold)}
 .m-toast-desc{font-size:.8rem;color:#a08820;margin-top:3px;line-height:1.4}
 
-/* ── COMBO BANNER ────────────────────────────────────────────────── */
+/* â”€â”€ COMBO BANNER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 #combo-banner{
   position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
   z-index:950;pointer-events:none;text-align:center;
@@ -519,7 +478,7 @@ function useExtraTime() {
 #combo-banner.show{display:block;animation:comboPop .45s cubic-bezier(.22,1,.36,1) both}
 #combo-banner.hide{animation:comboDie .5s ease forwards}
 
-/* ── RESULT ──────────────────────────────────────────────────────── */
+/* â”€â”€ RESULT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .result-card{padding:22px}
 .result-card h2{font-family:Georgia,serif;font-size:1.45rem;color:#fff;margin-bottom:4px}
 .big-score{
@@ -558,7 +517,7 @@ function useExtraTime() {
   .save-row,.actions{flex-direction:column}
 }
 
-/* ── PROFILE BAR ────────────────────────────────────────────────────── */
+/* â”€â”€ PROFILE BAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .profile-bar{
   display:flex;align-items:center;gap:14px;padding:14px 18px;
   margin-bottom:12px;border-radius:var(--r);
@@ -589,7 +548,7 @@ function useExtraTime() {
 }
 .icon-btn:hover{background:rgba(21,101,192,.12);border-color:var(--red-border);color:#fff}
 
-/* ── GAME MODE SELECT ───────────────────────────────────────────────── */
+/* â”€â”€ GAME MODE SELECT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .mode-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:14px 0}
 .mode-card{
   padding:18px;border-radius:16px;cursor:pointer;
@@ -609,7 +568,7 @@ function useExtraTime() {
   font-size:.68rem;color:var(--muted)
 }
 
-/* ── SETTINGS MODAL ─────────────────────────────────────────────────── */
+/* â”€â”€ SETTINGS MODAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .modal-overlay{
   position:fixed;inset:0;z-index:1000;
   background:rgba(0,0,0,.7);backdrop-filter:blur(6px);
@@ -659,7 +618,7 @@ function useExtraTime() {
 }
 .toggle.on::after{transform:translateX(22px)}
 
-/* ── LEVEL-UP OVERLAY ───────────────────────────────────────────────── */
+/* â”€â”€ LEVEL-UP OVERLAY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .levelup-overlay{
   position:fixed;inset:0;z-index:1100;
   background:rgba(0,0,0,.85);backdrop-filter:blur(8px);
@@ -678,7 +637,7 @@ function useExtraTime() {
 .levelup-card .lu-subtitle{font-size:1rem;color:#c8a800}
 .levelup-card .lu-desc{font-size:.85rem;color:var(--muted);margin-top:10px}
 
-/* ── STREAK NOTIFICATION ────────────────────────────────────────────── */
+/* â”€â”€ STREAK NOTIFICATION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .streak-notif{
   position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:1050;
   padding:14px 24px;border-radius:16px;
@@ -692,7 +651,7 @@ function useExtraTime() {
 .streak-notif .sn-text{font-size:.9rem}
 .streak-notif .sn-xp{font-size:.78rem;color:#ff9800;margin-top:4px}
 
-/* ── KNOWLEDGE LIBRARY ──────────────────────────────────────────────── */
+/* â”€â”€ KNOWLEDGE LIBRARY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .lib-item{
   padding:12px;border-radius:12px;margin-bottom:8px;
   background:rgba(21,101,192,.05);border:1px solid rgba(21,101,192,.15);
@@ -702,24 +661,24 @@ function useExtraTime() {
 .lib-item .lib-answer{color:var(--green);font-size:.8rem;margin-top:4px}
 .lib-clear{margin-top:8px}
 
-/* ── SHARE BUTTON ───────────────────────────────────────────────────── */
+/* â”€â”€ SHARE BUTTON â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .btn.share{background:linear-gradient(135deg,#1877f2,#0d47a1);border-color:#1877f2;color:#fff}
 
-/* ── EVOLUTION CHART ────────────────────────────────────────────────── */
+/* â”€â”€ EVOLUTION CHART â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .evo-chart{width:100%;height:120px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)}
 
-/* ── TRUE/FALSE OPTIONS ─────────────────────────────────────────────── */
+/* â”€â”€ TRUE/FALSE OPTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .options.tf-mode{grid-template-columns:1fr 1fr;gap:14px}
 .options.tf-mode .option{text-align:center;padding:18px;font-size:1.05rem}
 
-/* ── ANTI-GUESS WARNING ─────────────────────────────────────────────── */
+/* â”€â”€ ANTI-GUESS WARNING â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .anti-guess{
   padding:8px 14px;border-radius:10px;margin-top:8px;
   background:rgba(200,160,0,.08);border:1px solid rgba(200,160,0,.3);
   font-size:.82rem;color:#c8a000;font-weight:700
 }
 
-/* ── SPEEDRUN TIMER ─────────────────────────────────────────────────── */
+/* â”€â”€ SPEEDRUN TIMER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .speedrun-timer{
   position:fixed;top:0;left:0;right:0;height:6px;z-index:800;
   background:rgba(255,255,255,.05)
@@ -729,7 +688,7 @@ function useExtraTime() {
   transition:width .5s linear
 }
 
-/* ── UNLOCK NOTIFICATION ────────────────────────────────────────────── */
+/* â”€â”€ UNLOCK NOTIFICATION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .unlock-notif{
   padding:12px 16px;border-radius:14px;margin-bottom:8px;
   background:linear-gradient(135deg,rgba(168,0,255,.1),rgba(100,0,200,.05));
@@ -738,13 +697,13 @@ function useExtraTime() {
   font-size:.85rem;color:#ce93d8
 }
 
-/* ── ENHANCED STATS ─────────────────────────────────────────────────── */
+/* â”€â”€ ENHANCED STATS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .stat-grid-ext{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px;margin:14px 0}
 .stat-box-ext{padding:10px;border-radius:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);text-align:center}
 .stat-box-ext .sv{display:block;font-size:1.2rem;font-weight:900;color:#fff}
 .stat-box-ext .sl{display:block;font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:3px}
 
-/* ── ENVIRONMENT THEMES ─────────────────────────────────────────────── */
+/* â”€â”€ ENVIRONMENT THEMES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 body.theme-light{--bg:#f0f4fa;--card:#ffffff;--text:#1a2030;--muted:#606880;--red:#1565c0;--red-dim:rgba(21,101,192,.08);--red-border:rgba(21,101,192,.3);--green:#00a868;--gold:#b8860b}
 body.theme-light{background:linear-gradient(180deg,#f0f4fa,#e8eef8);color:var(--text)}
 body.theme-light .box{background:linear-gradient(160deg,rgba(255,255,255,.97),rgba(248,250,255,.97))}
@@ -762,38 +721,38 @@ body.theme-neon .btn.primary{background:linear-gradient(135deg,#a855f7,#6a1b9a);
 
 
 
-/* ── LIVES SYSTEM ──────────────────────────────────────────────────── */
+/* â”€â”€ LIVES SYSTEM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .lives-bar{display:flex;gap:6px;align-items:center;margin-bottom:10px;justify-content:center}
 .heart{font-size:1.6rem;transition:transform .3s,opacity .3s;filter:drop-shadow(0 0 4px rgba(21,101,192,.4))}
 .heart.lost{opacity:.2;transform:scale(.7);filter:grayscale(1)}
 .heart.breaking{animation:heartBreak .5s ease both}
 @keyframes heartBreak{0%{transform:scale(1)}30%{transform:scale(1.3)}60%{transform:scale(.5);opacity:.4}100%{transform:scale(.7);opacity:.2}}
 
-/* ── GOLDEN QUESTION ───────────────────────────────────────────────── */
+/* â”€â”€ GOLDEN QUESTION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .qcard.golden{border:2px solid rgba(255,215,0,.6);box-shadow:0 0 30px rgba(255,215,0,.2),0 0 60px rgba(255,215,0,.1)}
 .golden-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:99px;background:linear-gradient(135deg,rgba(255,215,0,.2),rgba(255,215,0,.08));border:1px solid rgba(255,215,0,.4);color:#ffd700;font-size:.78rem;font-weight:800;animation:shimmer 2s linear infinite;background-size:200% auto}
 
-/* ── BOSS QUESTION ─────────────────────────────────────────────────── */
+/* â”€â”€ BOSS QUESTION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .qcard.boss{border:2px solid rgba(168,0,255,.5);box-shadow:0 0 30px rgba(168,0,255,.2),0 0 60px rgba(168,0,255,.1)}
 .boss-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:99px;background:linear-gradient(135deg,rgba(168,0,255,.2),rgba(168,0,255,.08));border:1px solid rgba(168,0,255,.4);color:#ce93d8;font-size:.82rem;font-weight:800}
 
-/* ── FURY MODE ─────────────────────────────────────────────────────── */
+/* â”€â”€ FURY MODE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fury-active{animation:furyPulse 1s ease infinite}
 @keyframes furyPulse{0%,100%{box-shadow:0 0 20px rgba(21,101,192,.3),0 0 40px rgba(200,160,0,.15)}50%{box-shadow:0 0 40px rgba(21,101,192,.5),0 0 80px rgba(200,160,0,.3)}}
 .fury-banner{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:960;pointer-events:none;text-align:center;font-family:Georgia,serif;font-weight:900;font-size:4rem;color:#c8a000;text-shadow:0 0 40px #c8a000,0 0 80px rgba(200,160,0,.5);animation:comboPop .5s cubic-bezier(.22,1,.36,1) both}
 .fury-overlay{position:fixed;inset:0;z-index:955;pointer-events:none;background:radial-gradient(ellipse at center,transparent 40%,rgba(21,101,192,.06) 100%);animation:furyPulse 2s ease infinite}
 
-/* ── SUSPENSE ──────────────────────────────────────────────────────── */
+/* â”€â”€ SUSPENSE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .suspense-overlay{position:fixed;inset:0;z-index:970;pointer-events:none;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;animation:fadeIn .2s ease both}
 .suspense-text{font-family:Georgia,serif;font-size:1.4rem;color:#ffd700;text-align:center;animation:neonBlink .8s ease infinite}
 
-/* ── PARTICLES ─────────────────────────────────────────────────────── */
+/* â”€â”€ PARTICLES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 #particles-canvas{position:fixed;inset:0;z-index:980;pointer-events:none}
 
-/* ── STAR BACKGROUND ───────────────────────────────────────────────── */
+/* â”€â”€ STAR BACKGROUND â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 #star-canvas{position:fixed;inset:0;z-index:-2;pointer-events:none;opacity:.7}
 
-/* ── SCORE EXPLOSION ───────────────────────────────────────────────── */
+/* â”€â”€ SCORE EXPLOSION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .score-burst{
   position:fixed;z-index:995;pointer-events:none;
   font-family:Georgia,serif;font-weight:900;font-size:2.2rem;
@@ -806,12 +765,12 @@ body.theme-neon .btn.primary{background:linear-gradient(135deg,#a855f7,#6a1b9a);
   100%{opacity:0;transform:scale(1) translateY(-80px)}
 }
 
-/* ── ANIMATED BACKGROUND ───────────────────────────────────────────── */
+/* â”€â”€ ANIMATED BACKGROUND â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 #bg-symbols{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;opacity:.04}
 .bg-sym{position:absolute;font-size:2rem;animation:bgFloat linear infinite;opacity:.5}
 @keyframes bgFloat{0%{transform:translateY(110vh) rotate(0deg)}100%{transform:translateY(-10vh) rotate(360deg)}}
 
-/* ── EPIC INTRO ────────────────────────────────────────────────────── */
+/* â”€â”€ EPIC INTRO â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .epic-intro{position:fixed;inset:0;z-index:2000;background:linear-gradient(180deg,#000,#020510,#000);display:flex;flex-direction:column;align-items:center;justify-content:center;animation:fadeIn .5s ease both}
 .epic-intro .ei-icon{font-size:5rem;margin-bottom:20px;animation:medalPop .8s cubic-bezier(.22,1,.36,1) both}
 .epic-intro .ei-title{font-family:Georgia,serif;font-size:clamp(1.6rem,4vw,2.8rem);color:#fff;text-align:center;margin-bottom:10px;animation:fadeUp .6s ease .3s both;background:linear-gradient(135deg,#fff,#3b82f6);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
@@ -819,7 +778,7 @@ body.theme-neon .btn.primary{background:linear-gradient(135deg,#a855f7,#6a1b9a);
 .epic-intro .ei-btn{margin-top:30px;animation:fadeUp .6s ease .8s both}
 .epic-intro .ei-particles{position:absolute;inset:0;pointer-events:none;overflow:hidden}
 
-/* ── SKILL TREE ────────────────────────────────────────────────────── */
+/* â”€â”€ SKILL TREE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .skill-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:14px 0}
 .skill-card{padding:16px;border-radius:16px;cursor:pointer;background:linear-gradient(160deg,rgba(16,16,20,.97),rgba(9,9,12,.97));border:1px solid var(--red-border);transition:transform .2s,box-shadow .2s;text-align:center;position:relative}
 .skill-card:hover{transform:translateY(-3px);box-shadow:0 0 20px rgba(21,101,192,.2)}
@@ -829,15 +788,15 @@ body.theme-neon .btn.primary{background:linear-gradient(135deg,#a855f7,#6a1b9a);
 .skill-card p{font-size:.76rem;color:var(--muted);line-height:1.4}
 .skill-card .sk-cost{font-size:.72rem;color:#ffd700;margin-top:8px;font-weight:800}
 
-/* ── COINS ─────────────────────────────────────────────────────────── */
+/* â”€â”€ COINS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .coins-display{display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:99px;background:rgba(255,215,0,.08);border:1px solid rgba(255,215,0,.2);font-size:.82rem;font-weight:800;color:#ffd700}
 .coin-gain{position:fixed;z-index:990;pointer-events:none;font-weight:900;color:#ffd700;font-size:1.2rem;animation:coinFloat 1.5s ease forwards}
 @keyframes coinFloat{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-60px)}}
 
-/* ── STUDY MODE ────────────────────────────────────────────────────── */
+/* â”€â”€ STUDY MODE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .study-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:99px;background:rgba(0,213,142,.1);border:1px solid rgba(0,213,142,.3);color:#80ffda;font-size:.78rem;font-weight:800}
 
-/* ── CONSTITUTION MAP ──────────────────────────────────────────────── */
+/* â”€â”€ CONSTITUTION MAP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .const-map{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin:12px 0}
 .map-item{padding:12px;border-radius:12px;background:rgba(21,101,192,.04);border:1px solid rgba(21,101,192,.15);text-align:center;transition:transform .2s}
 .map-item:hover{transform:scale(1.03)}
@@ -847,16 +806,16 @@ body.theme-neon .btn.primary{background:linear-gradient(135deg,#a855f7,#6a1b9a);
 .map-item .mi-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,#1565c0,#00c875);transition:width .5s}
 .map-item .mi-pct{font-size:.7rem;color:var(--muted);margin-top:4px}
 
-/* ── NARRATOR BOX ──────────────────────────────────────────────────── */
+/* â”€â”€ NARRATOR BOX â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .narrator-box{margin-top:10px;padding:12px 16px;border-radius:12px;background:linear-gradient(135deg,rgba(100,100,200,.06),rgba(100,100,200,.02));border:1px solid rgba(100,100,200,.2);font-size:.84rem;color:#b0b0d0;line-height:1.6;animation:fadeUp .4s ease both}
 .narrator-box .nr-icon{font-size:1.1rem;margin-right:6px}
 
-/* ── FILL-IN-BLANK ─────────────────────────────────────────────────── */
+/* â”€â”€ FILL-IN-BLANK â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fill-blank-input{width:100%;padding:14px 16px;border-radius:13px;border:2px solid var(--red-border);background:rgba(255,255,255,.03);color:var(--text);font-size:1rem;font-weight:700;outline:none;transition:border-color .3s;margin:12px 0}
 .fill-blank-input:focus{border-color:#1565c0;box-shadow:0 0 20px rgba(21,101,192,.15)}
 .fill-blank-input::placeholder{color:var(--muted);font-weight:400}
 
-/* ── MOBILE OPTIMIZATIONS ──────────────────────────────────────────── */
+/* â”€â”€ MOBILE OPTIMIZATIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 @media(max-width:600px){
   .profile-bar{padding:10px 12px;gap:10px}
   .profile-avatar{font-size:1.6rem}
@@ -900,7 +859,7 @@ body.theme-neon .btn.primary{background:linear-gradient(135deg,#a855f7,#6a1b9a);
   .hero-stats{grid-template-columns:1fr}
 }
 
-/* ── TOUCH FRIENDLY ────────────────────────────────────────────────── */
+/* â”€â”€ TOUCH FRIENDLY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 @media(hover:none){
   .option{min-height:54px;touch-action:manipulation}
   .btn{min-height:50px;touch-action:manipulation}
@@ -914,14 +873,14 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
   touch-action:manipulation;-webkit-tap-highlight-color:rgba(21,101,192,.2);cursor:pointer
 }
 
-/* ── SAFE AREA (notch) ─────────────────────────────────────────────── */
+/* â”€â”€ SAFE AREA (notch) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 @supports(padding:env(safe-area-inset-top)){
   body{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
 }
 
-/* ══════════════════════════════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    ACCOUNT SYSTEM
-   ══════════════════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 #auth-wall{
   position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;
   background:linear-gradient(160deg,#02040a 0%,#05090f 50%,#030710 100%);
@@ -994,13 +953,13 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
 </style>
 </head>
 <body>
-<!-- ═══════════════════════════════════════════════════════════════════
-     AUTH WALL — aparece antes do jogo
-     ═══════════════════════════════════════════════════════════════════ -->
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+     AUTH WALL â€” aparece antes do jogo
+     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div id='auth-wall'>
   <div class='auth-box'>
     <div class='auth-logo'>
-      <span class='al-icon'>⚖️</span>
+      <span class='al-icon'>âš–ï¸</span>
       <h1>Guardiao da Constituicao</h1>
       <p>Crie sua conta ou entre para salvar seu progresso</p>
     </div>
@@ -1020,7 +979,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
       </div>
       <div class='auth-error' id='login-error'></div>
       <div class='auth-success' id='login-success'></div>
-      <button class='auth-submit' id='btn-login' onclick='doLogin()'>Entrar na Arena ⚔️</button>
+      <button class='auth-submit' id='btn-login' onclick='doLogin()'>Entrar na Arena âš”ï¸</button>
     </div>
     <!-- REGISTER -->
     <div id='auth-register-form' style='display:none'>
@@ -1042,7 +1001,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
       </div>
       <div class='auth-error' id='reg-error'></div>
       <div class='auth-success' id='reg-success'></div>
-      <button class='auth-submit' id='btn-register' onclick='doRegister()'>Criar minha conta 🏛️</button>
+      <button class='auth-submit' id='btn-register' onclick='doRegister()'>Criar minha conta ðŸ›ï¸</button>
     </div>
     <div class='auth-guest'>
       <button onclick='playAsGuest()'>Jogar sem conta (progresso nao salvo)</button>
@@ -1055,31 +1014,31 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
 
   <!-- PROFILE BAR -->
   <section class='profile-bar' id='profile-bar'>
-    <div class='profile-avatar' id='profile-avatar' title='Trocar avatar'>📚</div>
+    <div class='profile-avatar' id='profile-avatar' title='Trocar avatar'>ðŸ“š</div>
     <div class='profile-info'>
       <div class='profile-name' id='profile-display-name'>Jogador</div>
-      <div class='profile-title' id='profile-display-title'>Nv 1 — Estudante</div>
+      <div class='profile-title' id='profile-display-title'>Nv 1 â€” Estudante</div>
     </div>
     <div class='xp-wrap'>
       <div class='xp-label'><span id='xp-level-label'>Nivel 1</span><span id='xp-amount'>0 / 100 XP</span></div>
       <div class='xp-bar-bg'><div class='xp-bar-fill' id='xp-bar-fill' style='width:0%'></div></div>
     </div>
-    <div class='streak-badge' id='streak-badge' title='Sequencia diaria'>🔥 <span id='streak-days'>0</span> dias</div>
-    <div class='coins-display' id='coins-display'>🪙 <span id='coins-amount'>0</span></div>
+    <div class='streak-badge' id='streak-badge' title='Sequencia diaria'>ðŸ”¥ <span id='streak-days'>0</span> dias</div>
+    <div class='coins-display' id='coins-display'>ðŸª™ <span id='coins-amount'>0</span></div>
     <div class='profile-actions'>
       <div id='user-badge' style='display:none'>
-        <span class='ub-avatar' id='ub-av'>📚</span>
+        <span class='ub-avatar' id='ub-av'>ðŸ“š</span>
         <span class='ub-name' id='ub-name'>Jogador</span>
-        <span class='ub-logout' onclick='doLogout()' title='Sair'>⏏</span>
+        <span class='ub-logout' onclick='doLogout()' title='Sair'>â</span>
       </div>
-      <button class='icon-btn' id='btn-sound' title='Som'>🔊</button>
-      <button class='icon-btn' id='btn-settings' title='Configuracoes'>⚙️</button>
+      <button class='icon-btn' id='btn-sound' title='Som'>ðŸ”Š</button>
+      <button class='icon-btn' id='btn-settings' title='Configuracoes'>âš™ï¸</button>
     </div>
   </section>
 
   <!-- HERO -->
   <section class='box hero'>
-    <div class='eyebrow'>⚖️ Arena Constitucional — Ranking em Tempo Real</div>
+    <div class='eyebrow'>âš–ï¸ Arena Constitucional â€” Ranking em Tempo Real</div>
     <h1>Guardiao da Constituicao</h1>
     <p>Prove que voce domina a Constituicao Federal de 1988. Cinco niveis progressivos, multiplos modos de jogo, sistema de XP e progressao, ranking global ao vivo.</p>
     <div class='hero-stats'>
@@ -1097,7 +1056,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
       <!-- INTRO -->
       <section class='box panel' id='intro'>
         <h2>Como funciona</h2>
-        <p>Cada partida sorteia <strong>3 questoes por nivel</strong>. A pergunta aparece sozinha por <strong>20 segundos</strong> para voce ler — depois as alternativas sao reveladas. Quanto mais dificil o nivel, mais tempo para responder.</p>
+        <p>Cada partida sorteia <strong>3 questoes por nivel</strong>. A pergunta aparece sozinha por <strong>20 segundos</strong> para voce ler â€” depois as alternativas sao reveladas. Quanto mais dificil o nivel, mais tempo para responder.</p>
         <div class='levels' id='levels'></div>
 
         <!-- GAME MODE SELECT -->
@@ -1105,49 +1064,49 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
           <label>Modo de jogo</label>
           <div class='mode-grid' id='mode-grid'>
             <div class='mode-card active' data-mode='classic' onclick='selectMode("classic")'>
-              <div class='mode-icon'>📜</div>
+              <div class='mode-icon'>ðŸ“œ</div>
               <h3>Classico</h3>
               <p>15 questoes, 5 niveis progressivos</p>
             </div>
             <div class='mode-card' data-mode='infinite' onclick='selectMode("infinite")'>
-              <div class='mode-icon'>♾️</div>
+              <div class='mode-icon'>â™¾ï¸</div>
               <h3>Infinito</h3>
               <p>Jogue ate errar. Quanto mais longe, melhor!</p>
             </div>
             <div class='mode-card' data-mode='speedrun' onclick='selectMode("speedrun")'>
-              <div class='mode-icon'>⚡</div>
+              <div class='mode-icon'>âš¡</div>
               <h3>Relampago</h3>
               <p>2 minutos. Quantas voce consegue?</p>
             </div>
             <div class='mode-card' data-mode='study' onclick='selectMode("study")'>
-              <div class='mode-icon'>📖</div>
+              <div class='mode-icon'>ðŸ“–</div>
               <h3>Estudo</h3>
               <p>Sem tempo. Explicacoes detalhadas.</p>
             </div>
             <div class='mode-card' data-mode='replay' onclick='selectMode("replay")'>
-              <div class='mode-icon'>🔄</div>
+              <div class='mode-icon'>ðŸ”„</div>
               <h3>Treino</h3>
               <p>Refaca as perguntas que voce errou</p>
             </div>
           </div>
         </div>
         <div class='actions'>
-          <button class='btn primary' id='btn-start'>▶ Iniciar desafio</button>
-          <button class='btn secondary' id='btn-reload-rank'>↻ Atualizar ranking</button>
-          <button class='btn ghost hidden' id='btn-install'>📲 Instalar app</button>
+          <button class='btn primary' id='btn-start'>â–¶ Iniciar desafio</button>
+          <button class='btn secondary' id='btn-reload-rank'>â†» Atualizar ranking</button>
+          <button class='btn ghost hidden' id='btn-install'>ðŸ“² Instalar app</button>
         </div>
         <div class='info' style='margin-top:14px'><strong>Ranking:</strong> salvo localmente no servidor. Para compartilhar entre jogadores, mantenha o servidor Python rodando na rede.</div>
         <div style='margin-top:18px;padding:12px 16px;border-radius:12px;background:linear-gradient(135deg,rgba(21,101,192,.08),rgba(21,101,192,.03));border:1px solid rgba(21,101,192,.25);text-align:center;font-size:.82rem;color:#7ab0e0'>
-          <span style='font-size:1rem'>⚖️</span> Programado por <strong style='color:#c8a000'>Icaro Lucas Pereira Batista</strong>
+          <span style='font-size:1rem'>âš–ï¸</span> Programado por <strong style='color:#c8a000'>Icaro Lucas Pereira Batista</strong>
         </div>
       </section>
 
       <!-- GAME -->
       <section class='box panel hidden' id='game'>
         <div class='lives-bar' id='lives-bar'>
-          <span class='heart' id='heart-1'>❤️</span>
-          <span class='heart' id='heart-2'>❤️</span>
-          <span class='heart' id='heart-3'>❤️</span>
+          <span class='heart' id='heart-1'>â¤ï¸</span>
+          <span class='heart' id='heart-2'>â¤ï¸</span>
+          <span class='heart' id='heart-3'>â¤ï¸</span>
         </div>
         <div class='hud'>
           <div class='hud-box'><div class='lbl'>Pontuacao</div><div class='val' id='hud-score'>0</div></div>
@@ -1161,7 +1120,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
         <!-- QUESTION CARD -->
         <div class='box qcard' id='qcard'>
           <div class='qnav'>
-            <button class='btn primary' id='btn-next' disabled>Proxima ▶</button>
+            <button class='btn primary' id='btn-next' disabled>Proxima â–¶</button>
           </div>
           <div class='qtop'>
             <span class='pill' id='counter'>Pergunta 1/15</span>
@@ -1169,7 +1128,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
           </div>
           <!-- phase indicator -->
           <div class='phase-bar reading' id='phase-bar'>
-            <span id='phase-label'>📖 Leia a pergunta</span>
+            <span id='phase-label'>ðŸ“– Leia a pergunta</span>
             <span class='phase-cd' id='phase-cd'>20</span>
           </div>
           <h2 id='question-text'></h2>
@@ -1179,23 +1138,23 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
         <!-- AJUDAS -->
         <div class='help-grid'>
           <div class='help-card'>
-            <button class='btn secondary' id='btn-cut' style='width:100%'>✂ Eliminar 2 opcoes</button>
+            <button class='btn secondary' id='btn-cut' style='width:100%'>âœ‚ Eliminar 2 opcoes</button>
             <small>Uso unico por partida</small>
           </div>
           <div class='help-card'>
-            <button class='btn secondary' id='btn-hint' style='width:100%'>💡 Dica juridica</button>
+            <button class='btn secondary' id='btn-hint' style='width:100%'>ðŸ’¡ Dica juridica</button>
             <small>Uso unico por partida</small>
           </div>
           <div class='help-card'>
-            <button class='btn secondary' id='btn-law' style='width:100%'>📜 Base constitucional</button>
+            <button class='btn secondary' id='btn-law' style='width:100%'>ðŸ“œ Base constitucional</button>
             <small>Uso unico por partida</small>
           </div>
           <div class='help-card'>
-            <button class='btn secondary' id='btn-skip' style='width:100%'>⏭ Pular pergunta</button>
+            <button class='btn secondary' id='btn-skip' style='width:100%'>â­ Pular pergunta</button>
             <small>Uso unico por partida</small>
           </div>
           <div class='help-card'>
-            <button class='btn secondary' id='btn-extra-time' style='width:100%'>⏱ +15 segundos</button>
+            <button class='btn secondary' id='btn-extra-time' style='width:100%'>â± +15 segundos</button>
             <small>Uso unico por partida</small>
           </div>
         </div>
@@ -1215,7 +1174,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
       <!-- RANKING -->
       <section class='box panel'>
         <div class='rank-hdr'>
-          <h2>🏆 Ranking Global</h2>
+          <h2>ðŸ† Ranking Global</h2>
           <span class='chip'>Atualiza 5s</span>
         </div>
         <div class='ranking' id='ranking-list'>
@@ -1225,7 +1184,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
 
       <!-- MEDALS -->
       <section class='box panel'>
-        <h2>🥇 Medalhas</h2>
+        <h2>ðŸ¥‡ Medalhas</h2>
         <div class='medal-list' id='medal-list'>
           <div class='empty'>Inicie uma partida para ganhar medalhas.</div>
         </div>
@@ -1238,7 +1197,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
         <p id='res-text'></p>
         <div class='stat-grid' id='stat-grid'></div>
         <div id='wrong-section' class='hidden'>
-          <div style='font-size:.88rem;font-weight:800;color:#7ab0e0;margin-bottom:8px'>❌ Perguntas que voce errou:</div>
+          <div style='font-size:.88rem;font-weight:800;color:#7ab0e0;margin-bottom:8px'>âŒ Perguntas que voce errou:</div>
           <div class='wrong-list' id='wrong-list'></div>
         </div>
         <div class='save-row'>
@@ -1246,28 +1205,28 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
           <button class='btn primary' id='btn-save'>Salvar</button>
         </div>
         <div class='actions' style='margin-top:10px'>
-          <button class='btn secondary' id='btn-restart'>↺ Jogar novamente</button>
-          <button class='btn share' id='btn-share'>📤 Compartilhar resultado</button>
-          <button class='btn secondary' id='btn-save-library'>📚 Salvar erros para estudo</button>
+          <button class='btn secondary' id='btn-restart'>â†º Jogar novamente</button>
+          <button class='btn share' id='btn-share'>ðŸ“¤ Compartilhar resultado</button>
+          <button class='btn secondary' id='btn-save-library'>ðŸ“š Salvar erros para estudo</button>
         </div>
         <div id='easter-egg-msg' class='hidden' style='margin-top:12px;padding:14px;border-radius:12px;background:linear-gradient(135deg,rgba(255,215,0,.1),rgba(255,215,0,.04));border:1px solid rgba(255,215,0,.3);text-align:center;font-family:Georgia,serif;font-size:1rem;color:#ffd700'></div>
       </section>
 
       <!-- CONSTITUTION MAP -->
       <section class='box panel' id='const-map-section'>
-        <h2>🗺️ Mapa da Constituicao</h2>
+        <h2>ðŸ—ºï¸ Mapa da Constituicao</h2>
         <div class='const-map' id='const-map'></div>
       </section>
 
       <!-- SKILL TREE -->
       <section class='box panel' id='skill-section'>
-        <h2>🌳 Habilidades</h2>
+        <h2>ðŸŒ³ Habilidades</h2>
         <div class='skill-grid' id='skill-grid'></div>
       </section>
 
       <!-- KNOWLEDGE LIBRARY -->
       <section class='box panel' id='library-section'>
-        <h2>📚 Biblioteca de Estudo</h2>
+        <h2>ðŸ“š Biblioteca de Estudo</h2>
         <div id='library-list'>
           <div class='empty'>Nenhuma questao salva para estudo.</div>
         </div>
@@ -1276,7 +1235,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
 
       <!-- EVOLUTION -->
       <section class='box panel' id='evolution-section'>
-        <h2>📈 Evolucao</h2>
+        <h2>ðŸ“ˆ Evolucao</h2>
         <canvas class='evo-chart' id='evo-chart'></canvas>
         <div style='font-size:.75rem;color:var(--muted);margin-top:6px;text-align:center' id='evo-label'>Historico de precisao por partida</div>
       </section>
@@ -1302,23 +1261,23 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
 <script>
 'use strict';
 
-/* ══════════════════════════════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    ACCOUNT SYSTEM
-   ══════════════════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
 const AVATARS_AUTH = [
-  {id:'estudante', icon:'📚', name:'Estudante'},
-  {id:'advogado',  icon:'👨‍⚖️', name:'Advogado'},
-  {id:'juiza',     icon:'👩‍⚖️', name:'Juiza'},
-  {id:'ministra',  icon:'⚖️',  name:'Ministra'},
-  {id:'professor', icon:'🧑‍🏫', name:'Professor'},
-  {id:'guardiao',  icon:'🛡️', name:'Guardiao'},
+  {id:'estudante', icon:'ðŸ“š', name:'Estudante'},
+  {id:'advogado',  icon:'ðŸ‘¨â€âš–ï¸', name:'Advogado'},
+  {id:'juiza',     icon:'ðŸ‘©â€âš–ï¸', name:'Juiza'},
+  {id:'ministra',  icon:'âš–ï¸',  name:'Ministra'},
+  {id:'professor', icon:'ðŸ§‘â€ðŸ«', name:'Professor'},
+  {id:'guardiao',  icon:'ðŸ›¡ï¸', name:'Guardiao'},
 ];
 
 let currentUser = null;   // {username, avatar, guest}
 let selectedAvatar = 'estudante';
 
-/* Carrega sessão do localStorage */
+/* Carrega sessÃ£o do localStorage */
 function loadSession() {
   try {
     const s = localStorage.getItem('gc_session');
@@ -1394,7 +1353,7 @@ async function doLogin() {
   } catch(e) {
     showAuthError('login-error', e.message === 'not_found' ? 'Conta nao encontrada.' : 'Erro de conexao.');
   } finally {
-    btn.disabled = false; btn.textContent = 'Entrar na Arena ⚔️';
+    btn.disabled = false; btn.textContent = 'Entrar na Arena âš”ï¸';
   }
 }
 
@@ -1425,12 +1384,12 @@ async function doRegister() {
       body: JSON.stringify(payload)
     });
     if (!r.ok) throw new Error('save_fail');
-    showAuthSuccess('reg-success','Conta criada! Bem-vindo(a)! 🎉');
+    showAuthSuccess('reg-success','Conta criada! Bem-vindo(a)! ðŸŽ‰');
     setTimeout(() => enterGame({username:user, avatar:selectedAvatar, guest:false}), 900);
   } catch(e) {
     showAuthError('reg-error','Erro ao criar conta. Tente novamente.');
   } finally {
-    btn.disabled = false; btn.textContent = 'Criar minha conta 🏛️';
+    btn.disabled = false; btn.textContent = 'Criar minha conta ðŸ›ï¸';
   }
 }
 
@@ -1447,7 +1406,7 @@ function enterGame(user) {
   const av = AVATARS_AUTH.find(a => a.id === user.avatar) || AVATARS_AUTH[0];
   const badge = document.getElementById('user-badge');
   document.getElementById('ub-av').textContent   = av.icon;
-  document.getElementById('ub-name').textContent = user.guest ? '👤 Visitante' : user.username;
+  document.getElementById('ub-name').textContent = user.guest ? 'ðŸ‘¤ Visitante' : user.username;
   if (badge) badge.style.display = 'flex';
   // Carrega perfil do servidor (se nao-guest)
   if (!user.guest) syncProfileFromServer(user.username);
@@ -1459,7 +1418,7 @@ async function syncProfileFromServer(username) {
     if (!r.ok) return;
     const data = await r.json();
     if (!data.name) return;
-    // Merge com localStorage — servidor tem prioridade para campos numéricos
+    // Merge com localStorage â€” servidor tem prioridade para campos numÃ©ricos
     const local = loadProfile();
     const merged = Object.assign({}, local, {
       xp:             Math.max(local.xp||0, data.xp||0),
@@ -1500,7 +1459,7 @@ function doLogout() {
   document.getElementById('login-pass').value = '';
 }
 
-/* ── DATA ───────────────────────────────────────────────────────── */
+/* â”€â”€ DATA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const QUESTIONS = JSON.parse(document.getElementById('q-data').textContent);
 const LEVELS    = JSON.parse(document.getElementById('l-data').textContent);
 const LETTERS   = ['A','B','C','D'];
@@ -1508,7 +1467,7 @@ const QPL       = 3;
 const STREAK_BONUS = 5;
 const POLL_MS   = 5000;
 
-/* ── STATE ───────────────────────────────────────────────────────── */
+/* â”€â”€ STATE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const state = {
   deck:[], idx:0, score:0, streak:0,
   phase:'idle',        // 'reading' | 'answering' | 'done'
@@ -1524,7 +1483,7 @@ LEVELS.forEach(lv => state.lvStats[lv.id] = {total:0,ok:0,bestStreak:0});
 
 let installPrompt = null;
 
-/* ── UI REFS ─────────────────────────────────────────────────────── */
+/* â”€â”€ UI REFS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const $ = id => document.getElementById(id);
 const ui = {
   intro:        $('intro'),
@@ -1574,7 +1533,7 @@ const ui = {
   comboBanner:  $('combo-banner'),
 };
 
-/* ── UTILS ───────────────────────────────────────────────────────── */
+/* â”€â”€ UTILS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function shuffle(arr) {
   const a = [...arr];
   for (let i = a.length-1; i > 0; i--) {
@@ -1590,7 +1549,7 @@ function fmtTime(s) {
 function lvMeta(id) { return LEVELS.find(l=>l.id===id); }
 function elapsed() { return state.startedAt ? Math.floor((Date.now()-state.startedAt)/1000) : 0; }
 
-/* ── BUILD DECK ──────────────────────────────────────────────────── */
+/* â”€â”€ BUILD DECK â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function buildDeck() {
   let deck = [];
   LEVELS.forEach(lv => {
@@ -1600,7 +1559,7 @@ function buildDeck() {
   return deck;
 }
 
-/* ── MEDALS ──────────────────────────────────────────────────────── */
+/* â”€â”€ MEDALS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function computeMedals() {
   const stats  = state.lvStats;
   const allTot = Object.values(stats).reduce((s,x)=>s+x.total, 0);
@@ -1611,63 +1570,63 @@ function computeMedals() {
 
   // 1. Precisao
   if (allTot > 0 && acc >= 0.8)
-    medals.push({id:'acc', name:'🎯 Precisao Constitucional', desc:'Acertou 80% ou mais das questoes.'});
+    medals.push({id:'acc', name:'ðŸŽ¯ Precisao Constitucional', desc:'Acertou 80% ou mais das questoes.'});
 
-  // 2. Velocidade — usa elapsed() em tempo real, nao totalSec (so setado no fim)
+  // 2. Velocidade â€” usa elapsed() em tempo real, nao totalSec (so setado no fim)
   if (state.score >= 190 && sec > 0 && sec <= 900)
-    medals.push({id:'speed', name:'⚡ Celeridade Juridica', desc:'Alta pontuacao com agilidade.'});
+    medals.push({id:'speed', name:'âš¡ Celeridade Juridica', desc:'Alta pontuacao com agilidade.'});
 
   // 3. Remedios perfeito
   if (stats[3] && stats[3].total > 0 && stats[3].ok === stats[3].total)
-    medals.push({id:'rem', name:'⚖️ Mestre dos Remedios', desc:'Dominou todos os remedios constitucionais.'});
+    medals.push({id:'rem', name:'âš–ï¸ Mestre dos Remedios', desc:'Dominou todos os remedios constitucionais.'});
 
   // 4. Casos praticos
   if (stats[5] && stats[5].ok >= 2)
-    medals.push({id:'caso', name:'🏛️ Caso Concreto', desc:'Bom desempenho nos casos praticos.'});
+    medals.push({id:'caso', name:'ðŸ›ï¸ Caso Concreto', desc:'Bom desempenho nos casos praticos.'});
 
   // 5. Sequencia
   if (Object.values(stats).some(x => x.bestStreak >= 4))
-    medals.push({id:'streak', name:'🔥 Sequencia Implacavel', desc:'Manteve 4 ou mais acertos consecutivos.'});
+    medals.push({id:'streak', name:'ðŸ”¥ Sequencia Implacavel', desc:'Manteve 4 ou mais acertos consecutivos.'});
 
   // 6. Perfeito
   if (allOk > 0 && allOk === allTot && allTot >= 15)
-    medals.push({id:'perfect', name:'👑 Perfeicao Constitucional', desc:'Gabarito perfeito! 15/15!'});
+    medals.push({id:'perfect', name:'ðŸ‘‘ Perfeicao Constitucional', desc:'Gabarito perfeito! 15/15!'});
 
   // 7. Sem ajudas
   if (!state.used.cut && !state.used.hint && !state.used.law && allTot >= 15)
-    medals.push({id:'nohelp', name:'🧠 Mente Propria', desc:'Terminou sem usar nenhuma ajuda.'});
+    medals.push({id:'nohelp', name:'ðŸ§  Mente Propria', desc:'Terminou sem usar nenhuma ajuda.'});
 
   // 8. Iniciante
   if (allOk >= 1 && allTot >= 1 && !medals.some(m=>m.id==='first'))
-    medals.push({id:'first', name:'⭐ Primeiro Acerto', desc:'Acertou a primeira questao!'});
+    medals.push({id:'first', name:'â­ Primeiro Acerto', desc:'Acertou a primeira questao!'});
 
   // 9. Velocista (menos de 2 min)
   if (sec > 0 && sec <= 120 && allTot >= 15)
-    medals.push({id:'fast', name:'⏱️ Velocista', desc:'Terminou em menos de 2 minutos!'});
+    medals.push({id:'fast', name:'â±ï¸ Velocista', desc:'Terminou em menos de 2 minutos!'});
 
   // 10. Sequencia longa
   if (Object.values(stats).some(x => x.bestStreak >= 8))
-    medals.push({id:'longstreak', name:'💎 Sequencia Lendaria', desc:'8+ acertos consecutivos!'});
+    medals.push({id:'longstreak', name:'ðŸ’Ž Sequencia Lendaria', desc:'8+ acertos consecutivos!'});
 
   // 11. Modo infinito longe
   if (gameMode === 'infinite' && allOk >= 20)
-    medals.push({id:'infinite20', name:'♾️ Maratonista', desc:'20+ acertos no modo infinito!'});
+    medals.push({id:'infinite20', name:'â™¾ï¸ Maratonista', desc:'20+ acertos no modo infinito!'});
 
   // 12. Speedrun master
   if (gameMode === 'speedrun' && allOk >= 10)
-    medals.push({id:'speedmaster', name:'⚡ Relampago', desc:'10+ acertos no modo relampago!'});
+    medals.push({id:'speedmaster', name:'âš¡ Relampago', desc:'10+ acertos no modo relampago!'});
 
   // 13. Estudioso (tem questoes na biblioteca)
   if (profile.wrongLibrary && profile.wrongLibrary.length >= 10)
-    medals.push({id:'studious', name:'📚 Estudioso', desc:'10+ questoes na biblioteca de estudo.'});
+    medals.push({id:'studious', name:'ðŸ“š Estudioso', desc:'10+ questoes na biblioteca de estudo.'});
 
   // 14. Veterano (10+ partidas)
   if (profile.gamesPlayed >= 10)
-    medals.push({id:'veteran', name:'🎖️ Veterano', desc:'10+ partidas jogadas!'});
+    medals.push({id:'veteran', name:'ðŸŽ–ï¸ Veterano', desc:'10+ partidas jogadas!'});
 
   // 15. Streak diario
   if (profile.dailyStreak >= 5)
-    medals.push({id:'dailystreak', name:'🔥 Fogo Diario', desc:'5+ dias consecutivos!'});
+    medals.push({id:'dailystreak', name:'ðŸ”¥ Fogo Diario', desc:'5+ dias consecutivos!'});
 
   return medals;
 }
@@ -1699,7 +1658,7 @@ function showMedalToast(medal, delayMs) {
   setTimeout(() => {
     const t = document.createElement('div');
     t.className = 'm-toast';
-    t.innerHTML = `<div class='m-toast-head'>🏅 Medalha desbloqueada!</div>
+    t.innerHTML = `<div class='m-toast-head'>ðŸ… Medalha desbloqueada!</div>
                    <div class='m-toast-name'>${medal.name}</div>
                    <div class='m-toast-desc'>${medal.desc}</div>`;
     ui.medalToasts.appendChild(t);
@@ -1712,9 +1671,9 @@ function showMedalToast(medal, delayMs) {
   }, delayMs);
 }
 
-/* ── COMBO BANNER ─────────────────────────────────────────────────── */
+/* â”€â”€ COMBO BANNER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function showCombo(streak) {
-  const map = {3:['🔥 Combo x3!  +5pts','2.8rem','#ff9800'], 5:['🔥🔥 Combo x5!  +15pts','3.8rem','#ff5722'], 8:['🔥🔥🔥 Combo x8!  +30pts','5rem','#800020'], 10:['⚡ MODO GENIO ⚡  +50pts','5.5rem','#ffd700'], 15:['💎 LENDARIO 💎','6rem','#e040fb']};
+  const map = {3:['ðŸ”¥ Combo x3!  +5pts','2.8rem','#ff9800'], 5:['ðŸ”¥ðŸ”¥ Combo x5!  +15pts','3.8rem','#ff5722'], 8:['ðŸ”¥ðŸ”¥ðŸ”¥ Combo x8!  +30pts','5rem','#800020'], 10:['âš¡ MODO GENIO âš¡  +50pts','5.5rem','#ffd700'], 15:['ðŸ’Ž LENDARIO ðŸ’Ž','6rem','#e040fb']};
   if (!map[streak]) return;
   const [text, size, color] = map[streak];
   const b = ui.comboBanner;
@@ -1730,7 +1689,7 @@ function showCombo(streak) {
   }, 1200);
 }
 
-/* ── PLAYER TITLE ─────────────────────────────────────────────────── */
+/* â”€â”€ PLAYER TITLE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function playerTitle(score) {
   if (score >= 280) return 'Jurista Supremo';
   if (score >= 250) return 'Guardiao da Lei';
@@ -1743,7 +1702,7 @@ function playerTitle(score) {
   return 'Aprendiz Constitucional';
 }
 
-/* ── HUD ──────────────────────────────────────────────────────────── */
+/* â”€â”€ HUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function updateHud() {
   const q = state.deck[state.idx];
   ui.hudScore.textContent   = state.score;
@@ -1755,38 +1714,38 @@ function updateHud() {
   ui.progress.style.width = pct + '%';
 }
 
-/* ── PHASE DISPLAY ────────────────────────────────────────────────── */
+/* â”€â”€ PHASE DISPLAY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function setPhase(phase, seconds) {
   ui.phaseCd.textContent = seconds;
   ui.phaseCd.classList.toggle('urgent', seconds <= 5 && phase === 'answering');
 
   if (phase === 'reading') {
     ui.phaseBar.className  = 'phase-bar reading';
-    ui.phaseLabel.textContent = '📖 Leia a pergunta — as alternativas aparecem em breve';
-    ui.hudTimer.textContent   = '📖 ' + seconds + 's';
+    ui.phaseLabel.textContent = 'ðŸ“– Leia a pergunta â€” as alternativas aparecem em breve';
+    ui.hudTimer.textContent   = 'ðŸ“– ' + seconds + 's';
   } else if (phase === 'answering') {
     ui.phaseBar.className  = 'phase-bar answering';
-    ui.phaseLabel.textContent = '⏳ Escolha sua resposta';
+    ui.phaseLabel.textContent = 'â³ Escolha sua resposta';
     ui.hudTimer.textContent   = seconds + 's';
   } else if (phase === 'done-ok') {
     ui.phaseBar.className  = 'phase-bar done-ok';
-    ui.phaseLabel.textContent = '✅ Resposta correta!';
+    ui.phaseLabel.textContent = 'âœ… Resposta correta!';
     ui.phaseCd.textContent = '';
     ui.hudTimer.textContent   = '--';
   } else if (phase === 'done-no') {
     ui.phaseBar.className  = 'phase-bar done-no';
-    ui.phaseLabel.textContent = '❌ Resposta incorreta';
+    ui.phaseLabel.textContent = 'âŒ Resposta incorreta';
     ui.phaseCd.textContent = '';
     ui.hudTimer.textContent   = '--';
   } else if (phase === 'done-time') {
     ui.phaseBar.className  = 'phase-bar done-no';
-    ui.phaseLabel.textContent = '⏰ Tempo esgotado';
+    ui.phaseLabel.textContent = 'â° Tempo esgotado';
     ui.phaseCd.textContent = '';
     ui.hudTimer.textContent   = '--';
   }
 }
 
-/* ── RENDER QUESTION ──────────────────────────────────────────────── */
+/* â”€â”€ RENDER QUESTION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function renderQuestion() {
   const q  = state.deck[state.idx];
   const lv = lvMeta(q.level);
@@ -1819,16 +1778,16 @@ function renderQuestion() {
   const pts = Math.round(lv.base * mult);
   ui.counter.textContent = 'Pergunta ' + (state.idx+1) + '/' + state.deck.length;
   let ptsTxt = '+' + pts + ' pts';
-  if (isGoldenQuestion(q)) ptsTxt = '⭐ ' + ptsTxt + ' (3x)';
-  if (isBossQuestion(q)) ptsTxt = '🧠 BOSS ' + ptsTxt;
-  if (furyActive) ptsTxt += ' 🔥x2';
+  if (isGoldenQuestion(q)) ptsTxt = 'â­ ' + ptsTxt + ' (3x)';
+  if (isBossQuestion(q)) ptsTxt = 'ðŸ§  BOSS ' + ptsTxt;
+  if (furyActive) ptsTxt += ' ðŸ”¥x2';
   ui.ptsPill.textContent = ptsTxt;
 
   // Question text with badges
   let qPrefix = '';
-  if (isGoldenQuestion(q)) qPrefix = '<span class="golden-badge">⭐ Questao Dourada</span> ';
-  if (isBossQuestion(q)) qPrefix = '<span class="boss-badge">🧠 Pergunta Chefe</span> ';
-  if (q.type === 'fill') qPrefix += '<span class="study-badge">✍️ Preencher</span> ';
+  if (isGoldenQuestion(q)) qPrefix = '<span class="golden-badge">â­ Questao Dourada</span> ';
+  if (isBossQuestion(q)) qPrefix = '<span class="boss-badge">ðŸ§  Pergunta Chefe</span> ';
+  if (q.type === 'fill') qPrefix += '<span class="study-badge">âœï¸ Preencher</span> ';
   ui.qtext.innerHTML = qPrefix + q.q;
 
   // Help buttons
@@ -1844,7 +1803,7 @@ function renderQuestion() {
   const skillEffect = getEquippedSkill() ? SKILLS.find(s => s.id === getEquippedSkill()) : null;
   const extraTime = (skillEffect && skillEffect.effect === 'extraTime') ? 10 : 0;
 
-  // ── FASE 1: LEITURA ──────────────────────────────────
+  // â”€â”€ FASE 1: LEITURA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (isStudy) {
     // Study mode: skip reading phase, show options immediately
     state.timeLeft = 0;
@@ -1871,7 +1830,7 @@ function renderQuestion() {
   setTimeout(() => ui.qcard.scrollIntoView({behavior: window.innerWidth < 900 ? 'auto' : 'smooth', block:'start'}), 70);
 }
 
-/* ── REVEAL OPTIONS (fase 2) ──────────────────────────────────────── */
+/* â”€â”€ REVEAL OPTIONS (fase 2) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function revealOptions(q, lv) {
   state.phase    = 'answering';
   const isStudy = gameMode === 'study';
@@ -1892,8 +1851,6 @@ function revealOptions(q, lv) {
   `).join('');
   answerStartTime = Date.now();
   ui.options.querySelectorAll('.option').forEach(btn => {
-    // touchend com preventDefault garante resposta imediata no mobile
-    // sem conflito de scroll (doAnswer já protege contra double-call)
     btn.addEventListener('touchend', (e) => {
       e.preventDefault();
       doAnswer(+btn.dataset.i, false);
@@ -1912,7 +1869,7 @@ function revealOptions(q, lv) {
   }
   // Auto-hint skill effect
   if (activeSkill === 'intuition' && !state.used.hint) {
-    setTimeout(() => { state.used.hint = true; ui.btnHint.disabled = true; showAssist('💡 (Auto) ' + q.hint); }, 300);
+    setTimeout(() => { state.used.hint = true; ui.btnHint.disabled = true; showAssist('ðŸ’¡ (Auto) ' + q.hint); }, 300);
   }
 
   setPhase('answering', state.timeLeft);
@@ -1930,7 +1887,7 @@ function revealOptions(q, lv) {
   }, 1000);
 }
 
-/* ── ANSWER ───────────────────────────────────────────────────────── */
+/* â”€â”€ ANSWER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 async function doAnswer(sel, timedOut) {
   if (state.answered) return;
   state.answered = true;
@@ -1954,7 +1911,7 @@ async function doAnswer(sel, timedOut) {
 
   state.lvStats[q.level].total++;
   let isCorrect = false;
-  let fbTitle = timedOut ? '⏰ Tempo esgotado' : WRONG_REACTIONS[Math.floor(Math.random() * WRONG_REACTIONS.length)];
+  let fbTitle = timedOut ? 'â° Tempo esgotado' : WRONG_REACTIONS[Math.floor(Math.random() * WRONG_REACTIONS.length)];
   let fbBody  = q.exp;
 
   // Anti-guess check
@@ -1995,9 +1952,9 @@ async function doAnswer(sel, timedOut) {
     let bonusText = '';
     if (state.streak >= 2) bonusText += ' (+' + STREAK_BONUS + ' sequencia)';
     if (timeBonus > 0) bonusText += ' (+' + timeBonus + ' velocidade)';
-    if (furyActive) bonusText += ' (🔥 FURIA x2)';
+    if (furyActive) bonusText += ' (ðŸ”¥ FURIA x2)';
     if (antiGuess.penalty) bonusText += ' [anti-chute]';
-    fbBody = q.exp + bonusText + ' — +' + gain + ' pts.';
+    fbBody = q.exp + bonusText + ' â€” +' + gain + ' pts.';
     showCombo(state.streak);
     playSound(state.streak >= 3 ? 'combo' : 'correct');
     spawnParticles(isGoldenQuestion(q) ? 'golden' : 'correct');
@@ -2015,7 +1972,7 @@ async function doAnswer(sel, timedOut) {
     state.streak = 0;
     state.wrongQs.push(q);
     if (furyActive) deactivateFury();
-    if (timedOut) fbBody = q.exp + ' — Tempo encerrado antes da resposta.';
+    if (timedOut) fbBody = q.exp + ' â€” Tempo encerrado antes da resposta.';
     playSound('wrong');
     vibrate([100, 50, 100]);
 
@@ -2039,7 +1996,7 @@ async function doAnswer(sel, timedOut) {
   ui.feedbackBox.className = 'feedback' + (isCorrect ? ' ok' : '');
   ui.fbTitle.textContent = fbTitle;
   ui.fbBody.textContent  = fbBody;
-  ui.fbRef.textContent   = '📜 ' + q.ref + '. ' + q.note;
+  ui.fbRef.textContent   = 'ðŸ“œ ' + q.ref + '. ' + q.note;
   ui.feedbackBox.classList.remove('hidden');
   ui.btnNext.disabled = false;
 
@@ -2047,7 +2004,7 @@ async function doAnswer(sel, timedOut) {
   const narr = getNarratorComment(isCorrect, q.diff || 'normal');
   const narrDiv = document.createElement('div');
   narrDiv.className = 'narrator-box';
-  narrDiv.innerHTML = '<span class="nr-icon">🎙️</span>' + narr;
+  narrDiv.innerHTML = '<span class="nr-icon">ðŸŽ™ï¸</span>' + narr;
   ui.feedbackBox.appendChild(narrDiv);
 
   // Phase indicator
@@ -2057,7 +2014,7 @@ async function doAnswer(sel, timedOut) {
   updateHud();
 }
 
-/* ── NEXT QUESTION ────────────────────────────────────────────────── */
+/* â”€â”€ NEXT QUESTION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function nextQuestion() {
   state.idx++;
   // Infinite mode: keep going if last answer was correct, otherwise finish
@@ -2072,7 +2029,7 @@ function nextQuestion() {
   renderQuestion();
 }
 
-/* ── FINISH ───────────────────────────────────────────────────────── */
+/* â”€â”€ FINISH â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function finishGame() {
   clearInterval(state.ticker);
   state.totalSec = elapsed();
@@ -2102,9 +2059,9 @@ function finishGame() {
   if (state.wrongQs.length > 0) {
     ui.wrongList.innerHTML = state.wrongQs.map(q => `
       <div class='wrong-item'>
-        <b>Nivel ${q.level} · ${q.ref}</b>
+        <b>Nivel ${q.level} Â· ${q.ref}</b>
         ${q.q.length > 110 ? q.q.slice(0,110)+'...' : q.q}
-        <span class='wrong-correct'>✓ Correto: ${q.o[q.a]}</span>
+        <span class='wrong-correct'>âœ“ Correto: ${q.o[q.a]}</span>
       </div>
     `).join('');
     ui.wrongSection.classList.remove('hidden');
@@ -2120,10 +2077,10 @@ function finishGame() {
     '<div class="stat-box ' + (gameMode !== "classic" ? "g" : "") + '"><span class="sv">' + gameMode + '</span><span class="sl">Modo</span></div>';
 
   if (strong.length > 0) {
-    ui.statGrid.innerHTML += '<div class="stat-box g" style="grid-column:1/-1"><span class="sv">💪 ' + strong.join(', ') + '</span><span class="sl">Temas dominados</span></div>';
+    ui.statGrid.innerHTML += '<div class="stat-box g" style="grid-column:1/-1"><span class="sv">ðŸ’ª ' + strong.join(', ') + '</span><span class="sl">Temas dominados</span></div>';
   }
   if (weak.length > 0) {
-    ui.statGrid.innerHTML += '<div class="stat-box" style="grid-column:1/-1"><span class="sv">📖 ' + weak.join(', ') + '</span><span class="sl">Temas para revisar</span></div>';
+    ui.statGrid.innerHTML += '<div class="stat-box" style="grid-column:1/-1"><span class="sv">ðŸ“– ' + weak.join(', ') + '</span><span class="sl">Temas para revisar</span></div>';
   }
 
   // XP calculation
@@ -2163,7 +2120,7 @@ function finishGame() {
   setTimeout(() => ui.result.scrollIntoView({behavior: window.innerWidth < 900 ? 'auto' : 'smooth', block:'start'}), 90);
 }
 
-/* ── HELPERS (ajudas) ─────────────────────────────────────────────── */
+/* â”€â”€ HELPERS (ajudas) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function showAssist(msg) {
   ui.assistBox.textContent = msg;
   ui.assistBox.classList.remove('hidden');
@@ -2179,13 +2136,13 @@ function useCut() {
 function useHint() {
   if (state.used.hint || state.answered) return;
   state.used.hint = true; ui.btnHint.disabled = true;
-  showAssist('💡 Dica: ' + state.deck[state.idx].hint);
+  showAssist('ðŸ’¡ Dica: ' + state.deck[state.idx].hint);
 }
 function useLaw() {
   if (state.used.law || state.answered) return;
   const q = state.deck[state.idx];
   state.used.law = true; ui.btnLaw.disabled = true;
-  showAssist(`📜 ${q.ref}: ${q.note}`);
+  showAssist(`ðŸ“œ ${q.ref}: ${q.note}`);
 }
 
 function useSkip() {
@@ -2193,7 +2150,7 @@ function useSkip() {
   state.used.skip = true;
   if (ui.btnSkip) ui.btnSkip.disabled = true;
   playSound('skip');
-  showAssist('⏭ Pergunta pulada! Sem pontos.');
+  showAssist('â­ Pergunta pulada! Sem pontos.');
   state.answered = true;
   clearInterval(state.ticker);
   state.wrongQs.push(state.deck[state.idx]);
@@ -2206,22 +2163,22 @@ function useExtraTime() {
   state.used.extraTime = true;
   if (ui.btnExtraTime) ui.btnExtraTime.disabled = true;
   state.timeLeft += 15;
-  showAssist('⏱ +15 segundos adicionados!');
+  showAssist('â± +15 segundos adicionados!');
   playSound('tick');
 }
 
-/* ── RANKING ──────────────────────────────────────────────────────── */
+/* â”€â”€ RANKING â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function renderRanking(list) {
   if (!Array.isArray(list) || !list.length) {
     ui.rankingList.innerHTML = "<div class='empty'>Nenhum resultado ainda.</div>"; return;
   }
   const sorted = [...list].sort((a,b) => b.score!==a.score ? b.score-a.score : a.completion_seconds-b.completion_seconds);
-  const icons  = ['🥇','🥈','🥉'];
+  const icons  = ['ðŸ¥‡','ðŸ¥ˆ','ðŸ¥‰'];
   ui.rankingList.innerHTML = sorted.slice(0,12).map((e,i) => `
     <div class='rank-item' style='animation-delay:${i*0.06}s'>
-      <span class='rk-name'>${icons[i]||((i+1)+'.')} ${e.name} — ${e.score} pts</span>
-      <span class='rk-meta'>⏱ ${fmtTime(e.completion_seconds)} | ✓ ${e.correct_answers}/${e.total_questions}</span>
-      <span class='rk-sub'>${e.title}${e.medals&&e.medals.length?' · '+e.medals.join(', '):''}</span>
+      <span class='rk-name'>${icons[i]||((i+1)+'.')} ${e.name} â€” ${e.score} pts</span>
+      <span class='rk-meta'>â± ${fmtTime(e.completion_seconds)} | âœ“ ${e.correct_answers}/${e.total_questions}</span>
+      <span class='rk-sub'>${e.title}${e.medals&&e.medals.length?' Â· '+e.medals.join(', '):''}</span>
       <span class='rk-sub'>${e.saved_at}</span>
     </div>
   `).join('');
@@ -2265,14 +2222,14 @@ async function saveResult() {
       body: JSON.stringify(payload),
     });
     if (!r.ok) throw new Error();
-    state.saved = true; ui.btnSave.textContent = '✓ Salvo!';
+    state.saved = true; ui.btnSave.textContent = 'âœ“ Salvo!';
     renderRanking(await r.json());
   } catch {
-    ui.btnSave.disabled = false; ui.btnSave.textContent = 'Erro — tente novamente';
+    ui.btnSave.disabled = false; ui.btnSave.textContent = 'Erro â€” tente novamente';
   }
 }
 
-/* ── RESET & START ────────────────────────────────────────────────── */
+/* â”€â”€ RESET & START â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function resetGame() {
   clearInterval(state.ticker);
   state.deck = buildDeck();
@@ -2326,18 +2283,18 @@ async function startGame() {
   setTimeout(() => ui.game.scrollIntoView({behavior: window.innerWidth < 900 ? 'auto' : 'smooth', block:'start'}), 60);
 }
 
-/* ── RENDER LEVEL CARDS ───────────────────────────────────────────── */
+/* â”€â”€ RENDER LEVEL CARDS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function renderLevelCards() {
   ui.levels.innerHTML = LEVELS.map(lv => `
     <div class='level-card'>
       <span class='chip'>Nivel ${lv.id}</span>
       <h3>${lv.name}</h3>
-      <p>${QPL} questoes sorteadas<br>+${lv.base} pts base por acerto<br>📖 ${lv.read}s leitura + ⏳ ${lv.answer}s resposta</p>
+      <p>${QPL} questoes sorteadas<br>+${lv.base} pts base por acerto<br>ðŸ“– ${lv.read}s leitura + â³ ${lv.answer}s resposta</p>
     </div>
   `).join('');
 }
 
-/* ── PWA ──────────────────────────────────────────────────────────── */
+/* â”€â”€ PWA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function setupPWA() {
   if ('serviceWorker' in navigator)
     navigator.serviceWorker.register('/service-worker.js').catch(()=>{});
@@ -2347,7 +2304,7 @@ function setupPWA() {
   window.addEventListener('appinstalled', () => { installPrompt=null; ui.btnInstall.classList.add('hidden'); });
 }
 
-/* ── EVENTS ───────────────────────────────────────────────────────── */
+/* â”€â”€ EVENTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 ui.btnStart.addEventListener('click',   startGame);
 ui.btnRestart.addEventListener('click', startGame);
 ui.btnNext.addEventListener('click',    nextQuestion);
@@ -2361,7 +2318,7 @@ ui.btnExtraTime?.addEventListener('click', useExtraTime);
 document.getElementById('btn-share')?.addEventListener('click', shareResults);
 document.getElementById('btn-save-library')?.addEventListener('click', saveToLibrary);
 document.getElementById('btn-clear-library')?.addEventListener('click', clearLibrary);
-document.getElementById('btn-sound')?.addEventListener('click', () => { profile.soundEnabled = !profile.soundEnabled; saveProfile(); document.getElementById('btn-sound').textContent = profile.soundEnabled ? '🔊' : '🔇'; });
+document.getElementById('btn-sound')?.addEventListener('click', () => { profile.soundEnabled = !profile.soundEnabled; saveProfile(); document.getElementById('btn-sound').textContent = profile.soundEnabled ? 'ðŸ”Š' : 'ðŸ”‡'; });
 document.getElementById('btn-settings')?.addEventListener('click', openSettings);
 ui.btnInstall.addEventListener('click', async () => {
   if (!installPrompt) return;
@@ -2372,29 +2329,29 @@ ui.btnInstall.addEventListener('click', async () => {
 
 
 
-/* ══════════════════════════════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    NEW SYSTEMS - XP, Levels, Modes, Sound, Themes, etc.
-   ══════════════════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
-/* ── PLAYER LEVELS ─────────────────────────────────────────────────── */
+/* â”€â”€ PLAYER LEVELS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const PLAYER_LEVELS = [
-  {level:1,  xp:0,    title:'Estudante',               icon:'📚'},
-  {level:2,  xp:100,  title:'Estagiario Juridico',     icon:'📝'},
-  {level:3,  xp:250,  title:'Bacharel em Direito',     icon:'🎓'},
-  {level:5,  xp:500,  title:'Jurista',                  icon:'⚖️'},
-  {level:8,  xp:1000, title:'Magistrado',               icon:'👨‍⚖️'},
-  {level:10, xp:1500, title:'Desembargador',            icon:'🏛️'},
-  {level:15, xp:2500, title:'Ministro do STF',          icon:'🏆'},
-  {level:20, xp:4000, title:'Guardiao da Constituicao', icon:'👑'},
+  {level:1,  xp:0,    title:'Estudante',               icon:'ðŸ“š'},
+  {level:2,  xp:100,  title:'Estagiario Juridico',     icon:'ðŸ“'},
+  {level:3,  xp:250,  title:'Bacharel em Direito',     icon:'ðŸŽ“'},
+  {level:5,  xp:500,  title:'Jurista',                  icon:'âš–ï¸'},
+  {level:8,  xp:1000, title:'Magistrado',               icon:'ðŸ‘¨â€âš–ï¸'},
+  {level:10, xp:1500, title:'Desembargador',            icon:'ðŸ›ï¸'},
+  {level:15, xp:2500, title:'Ministro do STF',          icon:'ðŸ†'},
+  {level:20, xp:4000, title:'Guardiao da Constituicao', icon:'ðŸ‘‘'},
 ];
 
 const AVATARS = [
-  {id:'estudante', icon:'📚', name:'Estudante'},
-  {id:'advogado',  icon:'👨‍⚖️', name:'Advogado'},
-  {id:'juiza',     icon:'👩‍⚖️', name:'Juiza'},
-  {id:'ministra',  icon:'⚖️',  name:'Ministra'},
-  {id:'professor', icon:'🧑‍🏫', name:'Professor'},
-  {id:'guardiao',  icon:'🛡️', name:'Guardiao'},
+  {id:'estudante', icon:'ðŸ“š', name:'Estudante'},
+  {id:'advogado',  icon:'ðŸ‘¨â€âš–ï¸', name:'Advogado'},
+  {id:'juiza',     icon:'ðŸ‘©â€âš–ï¸', name:'Juiza'},
+  {id:'ministra',  icon:'âš–ï¸',  name:'Ministra'},
+  {id:'professor', icon:'ðŸ§‘â€ðŸ«', name:'Professor'},
+  {id:'guardiao',  icon:'ðŸ›¡ï¸', name:'Guardiao'},
 ];
 
 const THEMES_MAP = {
@@ -2412,25 +2369,25 @@ const UNLOCKS = [
 ];
 
 const CORRECT_REACTIONS = [
-  '🎉 Excelente interpretacao constitucional!',
-  '⚖️ Perfeito! Fundamentacao juridica impecavel!',
-  '🏛️ Nem o STF discordaria!',
-  '📜 Conhecimento constitucional solido!',
-  '🎯 Precisao juridica impressionante!',
-  '⭐ Resposta digna de um constitucionalista!',
-  '🔥 Voce domina o texto constitucional!',
-  '💎 Interpretacao constitucional impecavel!',
+  'ðŸŽ‰ Excelente interpretacao constitucional!',
+  'âš–ï¸ Perfeito! Fundamentacao juridica impecavel!',
+  'ðŸ›ï¸ Nem o STF discordaria!',
+  'ðŸ“œ Conhecimento constitucional solido!',
+  'ðŸŽ¯ Precisao juridica impressionante!',
+  'â­ Resposta digna de um constitucionalista!',
+  'ðŸ”¥ Voce domina o texto constitucional!',
+  'ðŸ’Ž Interpretacao constitucional impecavel!',
 ];
 
 const WRONG_REACTIONS = [
-  '⚖️ Quase! Veja o fundamento juridico.',
-  '📖 Boa tentativa! Revise esse artigo.',
-  '🔍 Atencao ao texto constitucional.',
-  '📚 Oportunidade de aprendizado!',
-  '💡 A Constituicao surpreende as vezes.',
+  'âš–ï¸ Quase! Veja o fundamento juridico.',
+  'ðŸ“– Boa tentativa! Revise esse artigo.',
+  'ðŸ” Atencao ao texto constitucional.',
+  'ðŸ“š Oportunidade de aprendizado!',
+  'ðŸ’¡ A Constituicao surpreende as vezes.',
 ];
 
-/* ── PROFILE MANAGEMENT ────────────────────────────────────────────── */
+/* â”€â”€ PROFILE MANAGEMENT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function loadProfile() {
   try {
     const s = localStorage.getItem('gc_profile');
@@ -2490,7 +2447,7 @@ function refreshProfileBar() {
 
   if (pAvatar) pAvatar.textContent = av.icon;
   if (pName) pName.textContent = ui.playerName.value || 'Jogador';
-  if (pTitle) pTitle.textContent = 'Nv ' + lvl.level + ' — ' + lvl.title;
+  if (pTitle) pTitle.textContent = 'Nv ' + lvl.level + ' â€” ' + lvl.title;
   if (xpLabel) xpLabel.textContent = 'Nivel ' + lvl.level;
   if (streakDays) streakDays.textContent = profile.dailyStreak;
 
@@ -2504,7 +2461,7 @@ function refreshProfileBar() {
   }
 }
 
-/* ── SOUND SYSTEM ──────────────────────────────────────────────────── */
+/* â”€â”€ SOUND SYSTEM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 let audioCtx;
 const SND = {
   correct:  [523.25, 659.25, 783.99],
@@ -2543,7 +2500,7 @@ function playSound(type) {
   notes.forEach((f, i) => playTone(f, 0.18, i * 0.1));
 }
 
-/* ── THEME SYSTEM ──────────────────────────────────────────────────── */
+/* â”€â”€ THEME SYSTEM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function applyTheme(t) {
   const theme = THEMES_MAP[t] || THEMES_MAP.dark;
   document.body.className = theme.cls;
@@ -2551,7 +2508,7 @@ function applyTheme(t) {
   saveProfile();
 }
 
-/* ── DAILY STREAK ──────────────────────────────────────────────────── */
+/* â”€â”€ DAILY STREAK â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function checkDailyStreak() {
   const today = new Date().toISOString().slice(0, 10);
   if (profile.lastPlayDate === today) return;
@@ -2572,14 +2529,14 @@ function checkDailyStreak() {
 function showStreakNotification(days, xp) {
   const el = document.getElementById('streak-notif');
   if (!el) return;
-  el.innerHTML = '<div class="sn-fire">' + '🔥'.repeat(Math.min(days, 5)) + '</div>' +
+  el.innerHTML = '<div class="sn-fire">' + 'ðŸ”¥'.repeat(Math.min(days, 5)) + '</div>' +
     '<div class="sn-text">Sequencia de ' + days + ' dia' + (days > 1 ? 's' : '') + '!</div>' +
     '<div class="sn-xp">+' + xp + ' XP bonus</div>';
   el.className = 'streak-notif';
   setTimeout(() => { el.className = 'hidden'; }, 4000);
 }
 
-/* ── LEVEL UP DISPLAY ──────────────────────────────────────────────── */
+/* â”€â”€ LEVEL UP DISPLAY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function showLevelUp(lvl) {
   const el = document.getElementById('level-up-overlay');
   if (!el) return;
@@ -2598,7 +2555,7 @@ function closeLevelUp() {
   if (el) el.className = 'hidden';
 }
 
-/* ── UNLOCK SYSTEM ─────────────────────────────────────────────────── */
+/* â”€â”€ UNLOCK SYSTEM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function checkUnlocks(level) {
   UNLOCKS.forEach(u => {
     if (level >= u.level) {
@@ -2614,7 +2571,7 @@ function isUnlocked(feature) {
   return !unlock || lvl >= unlock.level;
 }
 
-/* ── GAME MODES ────────────────────────────────────────────────────── */
+/* â”€â”€ GAME MODES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 let gameMode = 'classic';
 let speedrunTimer = null;
 let speedrunTimeLeft = 120;
@@ -2654,17 +2611,17 @@ function buildDeckForMode() {
   return buildDeck();
 }
 
-/* ── ANTI-GUESS ────────────────────────────────────────────────────── */
+/* â”€â”€ ANTI-GUESS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 let answerStartTime = 0;
 
 function checkAntiGuess(answerTimeMs) {
   if (answerTimeMs < 1500 && state.phase === 'answering') {
-    return { penalty: true, multiplier: 0.5, msg: '⚠️ Resposta muito rapida! Pontuacao reduzida pela metade.' };
+    return { penalty: true, multiplier: 0.5, msg: 'âš ï¸ Resposta muito rapida! Pontuacao reduzida pela metade.' };
   }
   return { penalty: false, multiplier: 1 };
 }
 
-/* ── SHARE RESULTS ─────────────────────────────────────────────────── */
+/* â”€â”€ SHARE RESULTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function shareResults() {
   const allOk = Object.values(state.lvStats).reduce((s, x) => s + x.ok, 0);
   const allTot = state.deck.length;
@@ -2678,7 +2635,7 @@ function shareResults() {
   }
 }
 
-/* ── KNOWLEDGE LIBRARY ─────────────────────────────────────────────── */
+/* â”€â”€ KNOWLEDGE LIBRARY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function saveToLibrary() {
   if (state.wrongQs.length === 0) return;
   state.wrongQs.forEach(q => {
@@ -2702,9 +2659,9 @@ function renderLibrary() {
   }
   if (clearBtn) clearBtn.classList.remove('hidden');
   el.innerHTML = profile.wrongLibrary.slice(-10).reverse().map(q =>
-    '<div class="lib-item"><b>Nv ' + q.level + ' · ' + q.ref + '</b>' +
+    '<div class="lib-item"><b>Nv ' + q.level + ' Â· ' + q.ref + '</b>' +
     (q.q.length > 100 ? q.q.slice(0, 100) + '...' : q.q) +
-    '<span class="lib-answer">✓ ' + q.o[q.a] + '</span></div>'
+    '<span class="lib-answer">âœ“ ' + q.o[q.a] + '</span></div>'
   ).join('');
 }
 
@@ -2715,7 +2672,7 @@ function clearLibrary() {
   renderLibrary();
 }
 
-/* ── EVOLUTION CHART ───────────────────────────────────────────────── */
+/* â”€â”€ EVOLUTION CHART â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function renderEvolution() {
   const canvas = document.getElementById('evo-chart');
   if (!canvas || profile.history.length < 2) return;
@@ -2757,18 +2714,18 @@ function renderEvolution() {
   });
 }
 
-/* ── SETTINGS MODAL ────────────────────────────────────────────────── */
+/* â”€â”€ SETTINGS MODAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function openSettings() {
   const modal = document.getElementById('settings-modal');
   if (!modal) return;
   const lvl = getPlayerLevel(profile.xp);
   modal.className = 'modal-overlay';
   modal.innerHTML = '<div class="modal-content">' +
-    '<button class="modal-close" onclick="closeSettings()">✕</button>' +
-    '<h2>⚙️ Configuracoes</h2>' +
+    '<button class="modal-close" onclick="closeSettings()">âœ•</button>' +
+    '<h2>âš™ï¸ Configuracoes</h2>' +
 
     '<div class="setting-group"><label>Tema visual' +
-    (isUnlocked('themes') ? '' : ' 🔒 (Nivel 3)') + '</label>' +
+    (isUnlocked('themes') ? '' : ' ðŸ”’ (Nivel 3)') + '</label>' +
     '<div class="theme-grid">' +
     Object.entries(THEMES_MAP).map(([k, v]) =>
       '<div class="theme-btn' + (profile.theme === k ? ' active' : '') + '" ' +
@@ -2807,7 +2764,7 @@ function openSettings() {
     '<p style="color:#ffd700;font-weight:800;font-size:1.1rem">' + lvl.icon + ' ' + lvl.title + '</p></div>' +
 
     '<div class="setting-group"><label>Moedas</label>' +
-    '<p style="color:#ffd700;font-weight:800;font-size:1.3rem">🪙 ' + getCoins() + ' moedas</p></div>' +
+    '<p style="color:#ffd700;font-weight:800;font-size:1.3rem">ðŸª™ ' + getCoins() + ' moedas</p></div>' +
 
     '<div class="setting-group"><label>Habilidade equipada</label>' +
     '<p style="color:#ce93d8;font-weight:800;font-size:1rem">' +
@@ -2822,7 +2779,7 @@ function closeSettings() {
   if (modal) modal.className = 'hidden';
 }
 
-/* ── ADAPTIVE DIFFICULTY ───────────────────────────────────────────── */
+/* â”€â”€ ADAPTIVE DIFFICULTY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function getAdaptiveDifficulty() {
   if (profile.totalQuestions < 10) return 'normal';
   const acc = profile.totalCorrect / profile.totalQuestions;
@@ -2831,7 +2788,7 @@ function getAdaptiveDifficulty() {
   return 'normal';
 }
 
-/* ── EASTER EGGS ───────────────────────────────────────────────────── */
+/* â”€â”€ EASTER EGGS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function checkEasterEggs() {
   const allOk = Object.values(state.lvStats).reduce((s, x) => s + x.ok, 0);
   const allTot = state.deck.length;
@@ -2839,20 +2796,20 @@ function checkEasterEggs() {
   if (!el) return;
 
   if (allOk === allTot && allTot >= 15) {
-    el.textContent = '🏛️ "Voce e digno do Supremo. A Constituicao esta em boas maos." — Guardiao da Constituicao';
+    el.textContent = 'ðŸ›ï¸ "Voce e digno do Supremo. A Constituicao esta em boas maos." â€” Guardiao da Constituicao';
     el.classList.remove('hidden');
   } else if (allOk === allTot && allTot >= 5) {
-    el.textContent = '⚖️ "Interpretacao constitucional impecavel. Nem o STF discordaria."';
+    el.textContent = 'âš–ï¸ "Interpretacao constitucional impecavel. Nem o STF discordaria."';
     el.classList.remove('hidden');
   } else if (state.score >= 250) {
-    el.textContent = '👑 "Poucos alcancam esse patamar. Voce honra a Constituicao."';
+    el.textContent = 'ðŸ‘‘ "Poucos alcancam esse patamar. Voce honra a Constituicao."';
     el.classList.remove('hidden');
   } else {
     el.classList.add('hidden');
   }
 }
 
-/* ── ENHANCED FINISH GAME ──────────────────────────────────────────── */
+/* â”€â”€ ENHANCED FINISH GAME â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function calcGameXP() {
   const allOk = Object.values(state.lvStats).reduce((s, x) => s + x.ok, 0);
   const bStrk = Object.values(state.lvStats).reduce((m, x) => Math.max(m, x.bestStreak), 0);
@@ -2864,7 +2821,7 @@ function calcGameXP() {
   return xp;
 }
 
-/* ── INIT MODE CARDS ───────────────────────────────────────────────── */
+/* â”€â”€ INIT MODE CARDS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function initModeCards() {
   UNLOCKS.forEach(u => {
     const card = document.querySelector('.mode-card[data-mode="' + u.feature + '"]');
@@ -2876,12 +2833,12 @@ function initModeCards() {
         badge.className = 'lock-badge';
         card.appendChild(badge);
       }
-      badge.textContent = '🔒 Nv ' + u.level;
+      badge.textContent = 'ðŸ”’ Nv ' + u.level;
     }
   });
 }
 
-/* ── SPEEDRUN MODE ─────────────────────────────────────────────────── */
+/* â”€â”€ SPEEDRUN MODE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function startSpeedrunTimer() {
   speedrunTimeLeft = 120;
   const bar = document.getElementById('speedrun-bar');
@@ -2906,11 +2863,11 @@ function stopSpeedrunTimer() {
 
 
 
-/* ══════════════════════════════════════════════════════════════════════
-   V2 SYSTEMS – Lives, Fury, Golden, Boss, Particles, Skills, Coins, etc.
-   ══════════════════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   V2 SYSTEMS â€“ Lives, Fury, Golden, Boss, Particles, Skills, Coins, etc.
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
-/* ── LIVES SYSTEM ──────────────────────────────────────────────────── */
+/* â”€â”€ LIVES SYSTEM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 let lives = 3;
 let livesEnabled = true;
 
@@ -2939,7 +2896,7 @@ function loseLife() {
   return false;
 }
 
-/* ── FURY MODE ─────────────────────────────────────────────────────── */
+/* â”€â”€ FURY MODE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 let furyActive = false;
 let furyTimeout = null;
 
@@ -2957,7 +2914,7 @@ function activateFury() {
   // Show fury banner
   const banner = document.createElement('div');
   banner.className = 'fury-banner';
-  banner.textContent = '🔥 MODO FURIA 🔥';
+  banner.textContent = 'ðŸ”¥ MODO FURIA ðŸ”¥';
   document.body.appendChild(banner);
   setTimeout(() => banner.remove(), 2000);
 
@@ -2975,22 +2932,22 @@ function deactivateFury() {
   if (ov) ov.className = 'hidden';
 }
 
-/* ── GOLDEN & BOSS QUESTION DETECTION ──────────────────────────────── */
+/* â”€â”€ GOLDEN & BOSS QUESTION DETECTION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function isGoldenQuestion(q) { return q.golden === true; }
 function isBossQuestion(q) { return q.boss === true; }
 
-/* ── SUSPENSE EFFECT ───────────────────────────────────────────────── */
+/* â”€â”€ SUSPENSE EFFECT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function showSuspense() {
   return new Promise(resolve => {
     const el = document.getElementById('suspense-overlay');
     if (!el) { resolve(); return; }
     el.className = 'suspense-overlay';
-    el.innerHTML = '<div class="suspense-text">⚖️ Processando resposta...</div>';
+    el.innerHTML = '<div class="suspense-text">âš–ï¸ Processando resposta...</div>';
     setTimeout(() => { el.className = 'hidden'; resolve(); }, 700);
   });
 }
 
-/* ── PARTICLE SYSTEM ───────────────────────────────────────────────── */
+/* â”€â”€ PARTICLE SYSTEM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function spawnParticles(type) {
   const canvas = document.getElementById('particles-canvas');
   if (!canvas) return;
@@ -3044,7 +3001,7 @@ function spawnParticles(type) {
   animate();
 }
 
-/* ── CONFETTI (resposta correta) ───────────────────────────────────── */
+/* â”€â”€ CONFETTI (resposta correta) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function spawnConfetti() {
   const canvas = document.getElementById('particles-canvas');
   if (!canvas) return;
@@ -3093,7 +3050,7 @@ function spawnConfetti() {
   draw();
 }
 
-/* ── SCORE EXPLOSION ───────────────────────────────────────────────── */
+/* â”€â”€ SCORE EXPLOSION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function showScoreExplosion(pts) {
   const el = document.createElement('div');
   el.className = 'score-burst';
@@ -3104,11 +3061,11 @@ function showScoreExplosion(pts) {
   setTimeout(() => el.remove(), 1300);
 }
 
-/* ── ANIMATED BACKGROUND ───────────────────────────────────────────── */
+/* â”€â”€ ANIMATED BACKGROUND â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function initAnimatedBG() {
   const container = document.getElementById('bg-symbols');
   if (!container) return;
-  const symbols = ['⚖️','📜','🏛️','📚','🔨','⭐','🗽','📖','🎓','👨‍⚖️','🏆','🛡️'];
+  const symbols = ['âš–ï¸','ðŸ“œ','ðŸ›ï¸','ðŸ“š','ðŸ”¨','â­','ðŸ—½','ðŸ“–','ðŸŽ“','ðŸ‘¨â€âš–ï¸','ðŸ†','ðŸ›¡ï¸'];
   for (let i = 0; i < 15; i++) {
     const sym = document.createElement('div');
     sym.className = 'bg-sym';
@@ -3121,7 +3078,7 @@ function initAnimatedBG() {
   }
 }
 
-/* ── STAR BACKGROUND ───────────────────────────────────────────────── */
+/* â”€â”€ STAR BACKGROUND â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function initStarBG() {
   const canvas = document.getElementById('star-canvas');
   if (!canvas) return;
@@ -3155,7 +3112,7 @@ function initStarBG() {
   twinkle();
 }
 
-/* ── EPIC INTRO ────────────────────────────────────────────────────── */
+/* â”€â”€ EPIC INTRO â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 let introShown = false;
 
 function showEpicIntro() {
@@ -3166,10 +3123,10 @@ function showEpicIntro() {
   return new Promise(resolve => {
     el.className = 'epic-intro';
     el.innerHTML =
-      '<div class="ei-icon">⚖️</div>' +
+      '<div class="ei-icon">âš–ï¸</div>' +
       '<div class="ei-title">Voce esta prestes a entrar na Arena Constitucional</div>' +
       '<div class="ei-sub">Defenda a Constituicao. Prove seu conhecimento juridico. Torne-se o Guardiao.</div>' +
-      '<button class="btn primary ei-btn" id="btn-enter-arena">Entrar na Arena ⚔️</button>';
+      '<button class="btn primary ei-btn" id="btn-enter-arena">Entrar na Arena âš”ï¸</button>';
     document.getElementById('btn-enter-arena').addEventListener('click', () => {
       el.style.animation = 'fadeIn .3s ease reverse forwards';
       playSound('levelup');
@@ -3179,12 +3136,12 @@ function showEpicIntro() {
   });
 }
 
-/* ── VIBRATION (mobile haptic) ─────────────────────────────────────── */
+/* â”€â”€ VIBRATION (mobile haptic) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function vibrate(pattern) {
   try { if (navigator.vibrate) navigator.vibrate(pattern); } catch(e) {}
 }
 
-/* ── COINS SYSTEM ──────────────────────────────────────────────────── */
+/* â”€â”€ COINS SYSTEM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function getCoins() { return profile.coins || 0; }
 
 function addCoins(amount, source) {
@@ -3203,21 +3160,21 @@ function refreshCoinsDisplay() {
 function showCoinGain(amount, source) {
   const el = document.createElement('div');
   el.className = 'coin-gain';
-  el.textContent = '+' + amount + ' 🪙';
+  el.textContent = '+' + amount + ' ðŸª™';
   el.style.left = (Math.random() * 60 + 20) + '%';
   el.style.top = '40%';
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 1500);
 }
 
-/* ── SKILL TREE ────────────────────────────────────────────────────── */
+/* â”€â”€ SKILL TREE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const SKILLS = [
-  {id:'fast', name:'Jurista Rapido', icon:'⚡', desc:'+10s extra em cada pergunta', cost:100, effect:'extraTime'},
-  {id:'memory', name:'Memoria Fotografica', icon:'🧠', desc:'Elimina 1 alternativa automaticamente', cost:150, effect:'autoElim'},
-  {id:'intuition', name:'Intuicao Juridica', icon:'💡', desc:'Dica automatica no inicio', cost:200, effect:'autoHint'},
-  {id:'shield', name:'Escudo Constitucional', icon:'🛡️', desc:'+1 vida extra por partida', cost:250, effect:'extraLife'},
-  {id:'double', name:'Dobro ou Nada', icon:'💰', desc:'Moedas em dobro por partida', cost:300, effect:'doubleCoins'},
-  {id:'scholar', name:'Erudito', icon:'📚', desc:'+25% XP por partida', cost:350, effect:'bonusXP'},
+  {id:'fast', name:'Jurista Rapido', icon:'âš¡', desc:'+10s extra em cada pergunta', cost:100, effect:'extraTime'},
+  {id:'memory', name:'Memoria Fotografica', icon:'ðŸ§ ', desc:'Elimina 1 alternativa automaticamente', cost:150, effect:'autoElim'},
+  {id:'intuition', name:'Intuicao Juridica', icon:'ðŸ’¡', desc:'Dica automatica no inicio', cost:200, effect:'autoHint'},
+  {id:'shield', name:'Escudo Constitucional', icon:'ðŸ›¡ï¸', desc:'+1 vida extra por partida', cost:250, effect:'extraLife'},
+  {id:'double', name:'Dobro ou Nada', icon:'ðŸ’°', desc:'Moedas em dobro por partida', cost:300, effect:'doubleCoins'},
+  {id:'scholar', name:'Erudito', icon:'ðŸ“š', desc:'+25% XP por partida', cost:350, effect:'bonusXP'},
 ];
 
 function getEquippedSkill() { return profile.equippedSkill || null; }
@@ -3238,7 +3195,7 @@ function renderSkillTree() {
       '<div class="sk-icon">' + s.icon + '</div>' +
       '<h4>' + s.name + '</h4>' +
       '<p>' + s.desc + '</p>' +
-      '<div class="sk-cost">' + (owned ? (isEquipped ? '✅ Equipada' : '📌 Equipar') : (canBuy ? '🪙 ' + s.cost : '🔒 ' + s.cost + ' moedas')) + '</div>' +
+      '<div class="sk-cost">' + (owned ? (isEquipped ? 'âœ… Equipada' : 'ðŸ“Œ Equipar') : (canBuy ? 'ðŸª™ ' + s.cost : 'ðŸ”’ ' + s.cost + ' moedas')) + '</div>' +
       '</div>';
   }).join('');
 }
@@ -3283,7 +3240,7 @@ function applySkillEffects() {
         let h4 = document.getElementById('heart-4');
         if (!h4) {
           h4 = document.createElement('span');
-          h4.className = 'heart'; h4.id = 'heart-4'; h4.textContent = '💜';
+          h4.className = 'heart'; h4.id = 'heart-4'; h4.textContent = 'ðŸ’œ';
           bar.appendChild(h4);
         } else { h4.className = 'heart'; }
       }
@@ -3297,13 +3254,13 @@ function applySkillEffects() {
   }
 }
 
-/* ── CONSTITUTION MAP ──────────────────────────────────────────────── */
+/* â”€â”€ CONSTITUTION MAP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const CONST_TOPICS = [
-  {id:'teoria', name:'Teoria Constitucional', icon:'📜', levels:[1]},
-  {id:'individuais', name:'Direitos Individuais', icon:'🛡️', levels:[2]},
-  {id:'remedios', name:'Remedios Constitucionais', icon:'⚖️', levels:[3]},
-  {id:'sociais', name:'Direitos Sociais', icon:'🤝', levels:[4]},
-  {id:'praticos', name:'Casos Praticos', icon:'🏛️', levels:[5]},
+  {id:'teoria', name:'Teoria Constitucional', icon:'ðŸ“œ', levels:[1]},
+  {id:'individuais', name:'Direitos Individuais', icon:'ðŸ›¡ï¸', levels:[2]},
+  {id:'remedios', name:'Remedios Constitucionais', icon:'âš–ï¸', levels:[3]},
+  {id:'sociais', name:'Direitos Sociais', icon:'ðŸ¤', levels:[4]},
+  {id:'praticos', name:'Casos Praticos', icon:'ðŸ›ï¸', levels:[5]},
 ];
 
 function renderConstitutionMap() {
@@ -3321,7 +3278,7 @@ function renderConstitutionMap() {
       '<div class="mi-icon">' + topic.icon + '</div>' +
       '<div class="mi-name">' + topic.name + '</div>' +
       '<div class="mi-bar"><div class="mi-fill" style="width:' + pct + '%"></div></div>' +
-      '<div class="mi-pct">' + pct + '% — ' + status + '</div>' +
+      '<div class="mi-pct">' + pct + '% â€” ' + status + '</div>' +
       '</div>';
   }).join('');
 }
@@ -3344,22 +3301,22 @@ function updateTopicStats(level, correct) {
   saveProfile();
 }
 
-/* ── NARRATOR COMMENTS ─────────────────────────────────────────────── */
+/* â”€â”€ NARRATOR COMMENTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const NARRATOR_COMMENTS = {
   correct_easy: [
-    '📖 O STF consolidou esse entendimento em diversas decisoes.',
-    '⚖️ Essa e uma questao basilar do direito constitucional brasileiro.',
-    '🏛️ Importante fundamento para qualquer operador do direito.',
+    'ðŸ“– O STF consolidou esse entendimento em diversas decisoes.',
+    'âš–ï¸ Essa e uma questao basilar do direito constitucional brasileiro.',
+    'ðŸ›ï¸ Importante fundamento para qualquer operador do direito.',
   ],
   correct_hard: [
-    '🎓 Poucos dominam esse tema com tanta clareza. Parabens!',
-    '⚖️ Esse e um tema complexo que exige profundo conhecimento constitucional.',
-    '👨‍⚖️ O proprio STF ja debateu longamente essa questao.',
+    'ðŸŽ“ Poucos dominam esse tema com tanta clareza. Parabens!',
+    'âš–ï¸ Esse e um tema complexo que exige profundo conhecimento constitucional.',
+    'ðŸ‘¨â€âš–ï¸ O proprio STF ja debateu longamente essa questao.',
   ],
   wrong: [
-    '📚 Revise esse tema. E fundamental para o direito constitucional.',
-    '💡 Esse artigo e frequentemente cobrado em concursos e provas.',
-    '🔍 Aprofunde-se nessa materia. A Constituicao tem nuances importantes.',
+    'ðŸ“š Revise esse tema. E fundamental para o direito constitucional.',
+    'ðŸ’¡ Esse artigo e frequentemente cobrado em concursos e provas.',
+    'ðŸ” Aprofunde-se nessa materia. A Constituicao tem nuances importantes.',
   ],
 };
 
@@ -3373,7 +3330,7 @@ function getNarratorComment(correct, difficulty) {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-/* ── ENHANCED SCORING ──────────────────────────────────────────────── */
+/* â”€â”€ ENHANCED SCORING â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function calcTimeBonus(answerTimeMs, totalTimeMs) {
   if (answerTimeMs <= 0 || totalTimeMs <= 0) return 0;
   const ratio = 1 - (answerTimeMs / (totalTimeMs * 1000));
@@ -3389,13 +3346,13 @@ function getDifficultyMultiplier(q) {
   return 1;
 }
 
-/* ── STREAK MILESTONES ─────────────────────────────────────────────── */
+/* â”€â”€ STREAK MILESTONES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const STREAK_MILESTONES = [
-  {days:3, reward:'medal', desc:'🏅 Medalha de Consistencia!', coins:20},
-  {days:5, reward:'avatar', desc:'🎭 Avatar especial desbloqueado!', coins:50},
-  {days:7, reward:'theme', desc:'🎨 Tema exclusivo desbloqueado!', coins:100},
-  {days:14, reward:'title', desc:'👑 Titulo "Constitucionalista Dedicado"!', coins:200},
-  {days:30, reward:'legendary', desc:'💎 Status Lendario alcancado!', coins:500},
+  {days:3, reward:'medal', desc:'ðŸ… Medalha de Consistencia!', coins:20},
+  {days:5, reward:'avatar', desc:'ðŸŽ­ Avatar especial desbloqueado!', coins:50},
+  {days:7, reward:'theme', desc:'ðŸŽ¨ Tema exclusivo desbloqueado!', coins:100},
+  {days:14, reward:'title', desc:'ðŸ‘‘ Titulo "Constitucionalista Dedicado"!', coins:200},
+  {days:30, reward:'legendary', desc:'ðŸ’Ž Status Lendario alcancado!', coins:500},
 ];
 
 function checkStreakMilestones() {
@@ -3408,10 +3365,10 @@ function checkStreakMilestones() {
   });
 }
 
-/* ── FILL-IN-BLANK HANDLER ─────────────────────────────────────────── */
+/* â”€â”€ FILL-IN-BLANK HANDLER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function renderFillBlank(q) {
   ui.options.innerHTML = '<input class="fill-blank-input" id="fill-input" type="text" placeholder="Digite sua resposta..." autocomplete="off" autocapitalize="none">' +
-    '<button class="btn primary" id="fill-submit" style="margin-top:8px;width:100%">✓ Confirmar resposta</button>';
+    '<button class="btn primary" id="fill-submit" style="margin-top:8px;width:100%">âœ“ Confirmar resposta</button>';
   document.getElementById('fill-submit').addEventListener('click', () => {
     const input = document.getElementById('fill-input');
     if (!input) return;
@@ -3450,7 +3407,7 @@ function doFillAnswer(isCorrect, q) {
     if (furyActive) gain *= 2;
     state.score += gain;
     fbTitle = CORRECT_REACTIONS[Math.floor(Math.random() * CORRECT_REACTIONS.length)];
-    fbBody = q.exp + ' — +' + gain + ' pts.';
+    fbBody = q.exp + ' â€” +' + gain + ' pts.';
     showCombo(state.streak);
     playSound(state.streak >= 3 ? 'combo' : 'correct');
     spawnParticles('correct');
@@ -3463,7 +3420,7 @@ function doFillAnswer(isCorrect, q) {
     state.wrongQs.push(q);
     if (furyActive) deactivateFury();
     fbTitle = WRONG_REACTIONS[Math.floor(Math.random() * WRONG_REACTIONS.length)];
-    fbBody = q.exp + ' — Resposta correta: ' + q.answer;
+    fbBody = q.exp + ' â€” Resposta correta: ' + q.answer;
     playSound('wrong');
     vibrate([100, 50, 100]);
     updateTopicStats(q.level, false);
@@ -3474,7 +3431,7 @@ function doFillAnswer(isCorrect, q) {
   ui.feedbackBox.className = 'feedback' + (isCorrect ? ' ok' : '');
   ui.fbTitle.textContent = fbTitle;
   ui.fbBody.textContent = fbBody;
-  ui.fbRef.textContent = '📜 ' + q.ref + '. ' + q.note;
+  ui.fbRef.textContent = 'ðŸ“œ ' + q.ref + '. ' + q.note;
   ui.feedbackBox.classList.remove('hidden');
   ui.btnNext.disabled = false;
 
@@ -3482,14 +3439,14 @@ function doFillAnswer(isCorrect, q) {
   const narr = getNarratorComment(isCorrect, q.diff || 'normal');
   const narrDiv = document.createElement('div');
   narrDiv.className = 'narrator-box';
-  narrDiv.innerHTML = '<span class="nr-icon">🎙️</span>' + narr;
+  narrDiv.innerHTML = '<span class="nr-icon">ðŸŽ™ï¸</span>' + narr;
   ui.feedbackBox.appendChild(narrDiv);
 
   refreshMedals();
   updateHud();
 }
 
-/* ── ENHANCED STATS (post-game) ────────────────────────────────────── */
+/* â”€â”€ ENHANCED STATS (post-game) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function getWeakestTopics() {
   if (!profile.topicStats) return [];
   return CONST_TOPICS.filter(t => {
@@ -3505,7 +3462,7 @@ function getStrongestTopics() {
     return s.total >= 3 && (s.correct / s.total) >= 0.8;
   }).map(t => t.name);
 }
-/* ── INIT ─────────────────────────────────────────────────────────── */
+/* â”€â”€ INIT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 renderLevelCards();
 setupPWA();
 loadRanking();
@@ -3520,9 +3477,9 @@ renderConstitutionMap();
 refreshCoinsDisplay();
 initAnimatedBG();
 initStarBG();
-document.getElementById('btn-sound').textContent = profile.soundEnabled ? '🔊' : '🔇';
+document.getElementById('btn-sound').textContent = profile.soundEnabled ? 'ðŸ”Š' : 'ðŸ”‡';
 
-/* ── AUTH INIT (must be last — needs ui, state, profile all ready) ── */
+/* â”€â”€ AUTH INIT (must be last â€” needs ui, state, profile all ready) â”€â”€ */
 (function initAuth() {
   renderAuthAvatars();
   ['login-user','login-pass'].forEach(id => {
@@ -3541,7 +3498,7 @@ document.getElementById('btn-sound').textContent = profile.soundEnabled ? '🔊'
 </html>"""
 
 
-# ── BACKEND ──────────────────────────────────────────────────────────────────
+# â”€â”€ BACKEND â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def clean_entry(item: dict) -> dict:
     return {
@@ -3565,59 +3522,85 @@ def sort_ranking(entries: list) -> list:
 
 
 def load_ranking() -> list:
-    try:
-        raw = _read_bin("ranking")
-    except Exception:
-        raw = None
-    if not isinstance(raw, list):
+    result = _supa("GET", "ranking", params="?select=*&order=score.desc,completion_seconds.asc")
+    if not isinstance(result, list):
         return []
-    return sort_ranking([clean_entry(x) for x in raw if isinstance(x, dict)])[:RANKING_LIMIT]
+    entries = []
+    for row in result:
+        medals = row.get("medals", [])
+        if isinstance(medals, str):
+            try: medals = json.loads(medals)
+            except: medals = []
+        entries.append(clean_entry({**row, "medals": medals}))
+    return entries[:RANKING_LIMIT]
 
 
 def save_ranking(entry: dict) -> list:
     with LOCK:
-        ranking = load_ranking()
-        ranking.append(clean_entry(entry))
-        ranking = sort_ranking(ranking)[:RANKING_LIMIT]
-        _write_bin("ranking", ranking)
-        return ranking
+        cleaned = clean_entry(entry)
+        payload = {**cleaned, "medals": json.dumps(cleaned["medals"], ensure_ascii=False)}
+        _supa("POST", "ranking", data=payload)
+        return load_ranking()
 
 
-def load_profiles() -> dict:
-    try:
-        raw = _read_bin("profiles")
-    except Exception:
-        raw = None
-    if not isinstance(raw, dict):
-        return {}
-    return raw
-
-
-def save_profile_data(name: str, data: dict) -> dict:
-    with LOCK:
-        profiles = load_profiles()
-        profiles[name[:30]] = data
-        _write_bin("profiles", profiles)
-        return profiles
-
-
-def load_accounts() -> dict:
-    try:
-        raw = _read_bin("accounts")
-    except Exception:
-        raw = None
-    return raw if isinstance(raw, dict) else {}
+def get_account(name: str) -> dict:
+    enc = urllib.parse.quote(name, safe="")
+    result = _supa("GET", "accounts", params=f"?name=eq.{enc}&select=*")
+    if isinstance(result, list) and result:
+        raw = result[0].get("data", {})
+        if isinstance(raw, str):
+            try: return json.loads(raw)
+            except: return {}
+        return raw if isinstance(raw, dict) else {}
+    return {}
 
 
 def save_account(name: str, data: dict) -> None:
     with LOCK:
-        accounts = load_accounts()
-        # Preserva o hash de senha se já existir e não vier novo
-        existing = accounts.get(name, {})
+        # Preserva o hash de senha se ja existir e nao vier novo
+        existing = get_account(name)
         if "pwHash" not in data and "pwHash" in existing:
             data["pwHash"] = existing["pwHash"]
-        accounts[name] = data
-        _write_bin("accounts", accounts)
+        payload = {"name": name[:30], "data": json.dumps(data, ensure_ascii=False)}
+        _supa("POST", "accounts", data=payload)
+
+
+def load_profiles() -> dict:
+    result = _supa("GET", "profiles", params="?select=*")
+    if not isinstance(result, list):
+        return {}
+    out = {}
+    for row in result:
+        n = row.get("name", "")
+        raw = row.get("data", {})
+        if isinstance(raw, str):
+            try: raw = json.loads(raw)
+            except: raw = {}
+        out[n] = raw
+    return out
+
+
+def save_profile_data(name: str, data: dict) -> dict:
+    with LOCK:
+        payload = {"name": name[:30], "data": json.dumps(data, ensure_ascii=False)}
+        _supa("POST", "profiles", data=payload)
+        return {}
+
+
+def load_accounts() -> dict:
+    # Mantido por compatibilidade — use get_account() diretamente
+    result = _supa("GET", "accounts", params="?select=*")
+    if not isinstance(result, list):
+        return {}
+    out = {}
+    for row in result:
+        n = row.get("name", "")
+        raw = row.get("data", {})
+        if isinstance(raw, str):
+            try: raw = json.loads(raw)
+            except: raw = {}
+        out[n] = raw
+    return out
 
 
 def render_html() -> bytes:
@@ -3627,7 +3610,7 @@ def render_html() -> bytes:
     return html.encode("utf-8")
 
 
-# ── HTTP HANDLER ──────────────────────────────────────────────────────────────
+# â”€â”€ HTTP HANDLER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class QuizHandler(BaseHTTPRequestHandler):
     def send_bytes(self, body, ct, status=HTTPStatus.OK, cc=None):
@@ -3659,8 +3642,7 @@ class QuizHandler(BaseHTTPRequestHandler):
             qs = parse_qs(urlparse(self.path).query)
             name = qs.get("name", [""])[0].strip()
             if name:
-                accounts = load_accounts()
-                self.send_json(accounts.get(name, {}))
+                self.send_json(get_account(name))
             else:
                 self.send_json({})
         elif p.startswith("/api/profile"):
@@ -3727,7 +3709,7 @@ class QuizHandler(BaseHTTPRequestHandler):
         pass
 
 
-# ── SERVER ────────────────────────────────────────────────────────────────────
+# â”€â”€ SERVER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def guess_ip() -> str:
     try:
@@ -3769,3 +3751,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
