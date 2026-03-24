@@ -61,17 +61,17 @@ LEVELS = [
 ]
 
 QUESTIONS = [
-    # â”€â”€ NIVEL 1 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    {"level":1,"q":"O Art. 5, paragrafo 1, da Constituicao de 1988 estabelece que as normas definidoras dos direitos e garantias fundamentais possuem:","o":["Aplicacao imediata","Aplicacao condicionada a lei complementar","Aplicacao apenas subsidiaria","Aplicacao restrita ao Judiciario"],"a":0,"hint":"A Constituicao quis maximizar a eficacia dos direitos fundamentais.","ref":"Art. 5, Â§1","note":"As normas definidoras dos direitos e garantias fundamentais tem aplicacao imediata.","exp":"O dispositivo afasta a ideia de que direitos fundamentais dependem sempre de regulamentacao para produzir efeitos."},
-    {"level":1,"q":"Tratados e convencoes internacionais sobre direitos humanos aprovados em cada Casa do Congresso, em dois turnos, por tres quintos dos votos, equivalem a:","o":["Lei ordinaria federal","Lei complementar federal","Emenda constitucional","Decreto autonomo"],"a":2,"hint":"A Constituicao criou um procedimento reforcado para certos tratados de direitos humanos.","ref":"Art. 5, Â§3","note":"O texto constitucional equipara esses tratados a emendas constitucionais.","exp":"Nao basta tratar de direitos humanos; o tratado precisa cumprir o rito qualificado previsto na propria Constituicao."},
-    {"level":1,"q":"O Art. 5, paragrafo 2, indica que os direitos e garantias expressos na Constituicao:","o":["Formam rol taxativo e exaustivo","Excluem direitos oriundos de tratados","Nao excluem outros decorrentes do regime, dos principios e dos tratados adotados pelo Brasil","Dependem de lei para serem reconhecidos"],"a":2,"hint":"O sistema constitucional brasileiro e materialmente aberto.","ref":"Art. 5, Â§2","note":"O rol de direitos fundamentais nao e fechado nem puramente enumerativo.","exp":"A Constituicao admite direitos materialmente fundamentais fora do texto literal do caput e dos incisos do Art. 5."},
-    {"level":1,"q":"Qual materia e protegida como clausula petrea pelo Art. 60, paragrafo 4?","o":["Direitos e garantias individuais","Plano plurianual","Competencia residual dos municipios","Estrutura administrativa de ministerios"],"a":0,"hint":"A resposta protege o nucleo duro do constitucionalismo liberal-democratico.","ref":"Art. 60, Â§4","note":"Direitos e garantias individuais nao podem ser abolidos sequer por emenda.","exp":"A Constituicao impede reformas que ataquem o nucleo essencial de direitos e garantias, protegendo a ordem constitucional contra autodestruicao."},
+    # ── NIVEL 1 ────────────────────────────────────────────────────────────────
+    {"level":1,"q":"O Art. 5, paragrafo 1, da Constituicao de 1988 estabelece que as normas definidoras dos direitos e garantias fundamentais possuem:","o":["Aplicacao imediata","Aplicacao condicionada a lei complementar","Aplicacao apenas subsidiaria","Aplicacao restrita ao Judiciario"],"a":0,"hint":"A Constituicao quis maximizar a eficacia dos direitos fundamentais.","ref":"Art. 5, §1","note":"As normas definidoras dos direitos e garantias fundamentais tem aplicacao imediata.","exp":"O dispositivo afasta a ideia de que direitos fundamentais dependem sempre de regulamentacao para produzir efeitos."},
+    {"level":1,"q":"Tratados e convencoes internacionais sobre direitos humanos aprovados em cada Casa do Congresso, em dois turnos, por tres quintos dos votos, equivalem a:","o":["Lei ordinaria federal","Lei complementar federal","Emenda constitucional","Decreto autonomo"],"a":2,"hint":"A Constituicao criou um procedimento reforcado para certos tratados de direitos humanos.","ref":"Art. 5, §3","note":"O texto constitucional equipara esses tratados a emendas constitucionais.","exp":"Nao basta tratar de direitos humanos; o tratado precisa cumprir o rito qualificado previsto na propria Constituicao."},
+    {"level":1,"q":"O Art. 5, paragrafo 2, indica que os direitos e garantias expressos na Constituicao:","o":["Formam rol taxativo e exaustivo","Excluem direitos oriundos de tratados","Nao excluem outros decorrentes do regime, dos principios e dos tratados adotados pelo Brasil","Dependem de lei para serem reconhecidos"],"a":2,"hint":"O sistema constitucional brasileiro e materialmente aberto.","ref":"Art. 5, §2","note":"O rol de direitos fundamentais nao e fechado nem puramente enumerativo.","exp":"A Constituicao admite direitos materialmente fundamentais fora do texto literal do caput e dos incisos do Art. 5."},
+    {"level":1,"q":"Qual materia e protegida como clausula petrea pelo Art. 60, paragrafo 4?","o":["Direitos e garantias individuais","Plano plurianual","Competencia residual dos municipios","Estrutura administrativa de ministerios"],"a":0,"hint":"A resposta protege o nucleo duro do constitucionalismo liberal-democratico.","ref":"Art. 60, §4","note":"Direitos e garantias individuais nao podem ser abolidos sequer por emenda.","exp":"A Constituicao impede reformas que ataquem o nucleo essencial de direitos e garantias, protegendo a ordem constitucional contra autodestruicao."},
     {"level":1,"q":"A afirmacao de que todo poder emana do povo e por ele sera exercido diretamente ou por representantes eleitos traduz qual vetor constitucional?","o":["Soberania popular","Separacao rigida de poderes","Legalidade estrita tributaria","Federalismo cooperativo"],"a":0,"hint":"A regra conecta legitimidade do poder e democracia.","ref":"Art. 1, paragrafo unico","note":"A origem do poder politico e popular, e nao burocratica.","exp":"O dispositivo funda o Estado Democratico de Direito em uma base de legitimidade popular."},
     {"level":1,"q":"No plano dogmatico, a afirmacao correta sobre direitos fundamentais e:","o":["Sao absolutos em qualquer colisao","Tem eficacia apenas nas relacoes Estado-individuo","Podem irradiar efeitos tambem nas relacoes privadas","Valem apenas para brasileiros natos"],"a":2,"hint":"Pense na eficacia horizontal dos direitos fundamentais.","ref":"Art. 5 e teoria da eficacia horizontal","note":"A protecao dos direitos fundamentais pode repercutir tambem em relacoes entre particulares.","exp":"A leitura contemporanea da Constituicao reconhece que direitos fundamentais tambem condicionam relacoes privadas em maior ou menor grau."},
     {"level":1,"q":"A leitura contemporanea do principio da igualdade autoriza concluir que:","o":["A Constituicao so admite igualdade formal","Tratamentos desiguais sao sempre inconstitucionais","A igualdade pode justificar diferenciacoes normativas quando fundadas em criterio constitucionalmente legitimo","A igualdade impede qualquer politica publica de inclusao"],"a":2,"hint":"A igualdade material busca reduzir assimetrias injustificadas.","ref":"Art. 5, caput","note":"A igualdade constitucional nao se reduz a uniformidade cega.","exp":"A isonomia constitucional permite diferenciacoes justificadas para promover equilibrio e impedir discriminacoes arbitrarias."},
     {"level":1,"q":"Segundo a doutrina e a jurisprudencia do STF, direitos fundamentais podem ser restringidos por lei desde que:","o":["A restricao seja total e definitiva","Preservem o nucleo essencial e respeitem a proporcionalidade","O Executivo concorde com a restricao","A restricao abranja apenas estrangeiros"],"a":1,"hint":"Ha um limite que nem o legislador pode ultrapassar.","ref":"Art. 5 e teoria do nucleo essencial","note":"A restricao legislativa de direito fundamental deve respeitar o nucleo essencial e o principio da proporcionalidade.","exp":"O STF consagrou que leis que esvaziem por completo o conteudo de um direito fundamental sao inconstitucionais por violacao ao seu nucleo essencial."},
     {"level":1,"q":"A dignidade da pessoa humana na Constituicao de 1988 esta posicionada como:","o":["Direito subjetivo passivel de ponderacao ordinaria","Fundamento da Republica Federativa do Brasil","Principio administrativo restrito ao funcionalismo publico","Norma programatica sem eficacia juridica propria"],"a":1,"hint":"Observe onde a Constituicao posiciona esse valor: no titulo sobre os fundamentos.","ref":"Art. 1, III","note":"A dignidade da pessoa humana e fundamento da Republica, com densidade normativa propria.","exp":"Ao ser erigida como fundamento, a dignidade deixa de ser apenas diretriz e passa a condicionar toda a ordem juridica."},
-    # â”€â”€ NIVEL 2 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── NIVEL 2 ────────────────────────────────────────────────────────────────
     {"level":2,"q":"Qual afirmacao esta de acordo com a liberdade de manifestacao do pensamento na Constituicao de 1988?","o":["E livre, mas o anonimato e vedado","Depende de licenca administrativa","Admite censura previa em contexto politico sensivel","So protege opinioes favoraveis a ordem constitucional"],"a":0,"hint":"A Constituicao protege a liberdade, mas exige responsabilidade.","ref":"Art. 5, IV","note":"A manifestacao do pensamento e livre, vedado o anonimato.","exp":"A vedacao ao anonimato busca permitir responsabilizacao posterior, sem abrir espaco para censura previa."},
     {"level":2,"q":"A dissolucao compulsoria de associacao civil somente pode ocorrer:","o":["Por ato do Poder Executivo em caso de interesse publico","Por decisao judicial com transito em julgado","Por deliberacao do Ministerio Publico","Por decreto legislativo simples"],"a":1,"hint":"A Constituicao protege fortemente a liberdade associativa.","ref":"Art. 5, XIX","note":"A dissolucao compulsoria depende de decisao judicial transitada em julgado.","exp":"A ordem constitucional nao admite que o Executivo desconstitua associacoes por mera conveniencia politica ou administrativa."},
     {"level":2,"q":"Quanto a inviolabilidade de domicilio, a regra correta e:","o":["A ordem judicial autoriza ingresso forcado a qualquer hora","A entrada e sempre livre em investigacao criminal","A casa e asilo inviolavel, salvo flagrante, desastre, socorro, ou ordem judicial durante o dia","A policia pode ingressar a noite com autorizacao verbal de delegado"],"a":2,"hint":"A excecao da ordem judicial tem limitacao temporal expressa.","ref":"Art. 5, XI","note":"A ordem judicial nao autoriza, por si so, ingresso noturno.","exp":"O texto constitucional foi preciso ao limitar a execucao de ordem judicial ao periodo diurno, salvo outras hipoteses constitucionais."},
@@ -81,7 +81,7 @@ QUESTIONS = [
     {"level":2,"q":"Quanto a liberdade de associacao, a alternativa correta e:","o":["A criacao de associacoes depende de autorizacao estatal","E plena a liberdade de associacao para fins licitos, vedada a de carater paramilitar","Associacoes podem ser dissolvidas por ato do prefeito","A liberdade associativa nao alcanca entidades sindicais"],"a":1,"hint":"A Constituicao dispensa autorizacao, mas nao tolera fins ilicitos ou carater paramilitar.","ref":"Art. 5, XVII e XVIII","note":"Associacoes licitas independem de autorizacao e o Estado nao pode interferir em seu funcionamento, salvo limites constitucionais.","exp":"O texto constitucional protege a autonomia associativa, mas exclui fins ilicitos e estruturas paramilitares."},
     {"level":2,"q":"A liberdade de crenca e culto religioso na Constituicao implica:","o":["Apenas tolerancia passiva do Estado","Livre exercicio dos cultos religiosos e protecao aos locais de culto e liturgias","Financiamento obrigatorio de toda religiao pelo Estado","Proibicao de simbolos religiosos em espacos publicos"],"a":1,"hint":"A liberdade religiosa tem dimensao positiva e negativa.","ref":"Art. 5, VI","note":"O livre exercicio dos cultos religiosos e garantido, e o Estado deve proteger os locais de culto e suas liturgias.","exp":"A Constituicao nao se limita a tolerar religiao; ela garante o exercicio ativo e protege os espacos de culto."},
     {"level":2,"q":"O direito de propriedade na Constituicao de 1988 esta condicionado a:","o":["Uso exclusivo do titular, sem restricoes","Atendimento de sua funcao social","Autorizacao anual do Municipio","Registro obrigatorio em cartorio para todos os bens"],"a":1,"hint":"A Constituicao nao reconhece propriedade como direito absoluto e desvinculado de responsabilidade social.","ref":"Art. 5, XXIII","note":"A propriedade atendera sua funcao social.","exp":"A funcao social e condicao intrinseca do exercicio do direito de propriedade, nao mera restricao externa."},
-    # â”€â”€ NIVEL 3 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── NIVEL 3 ────────────────────────────────────────────────────────────────
     {"level":3,"q":"No mandado de seguranca coletivo, possuem legitimidade ativa, entre outros:","o":["Apenas a Defensoria Publica e o Ministerio Publico","Partido politico com representacao no Congresso e entidade associativa constituida ha pelo menos um ano, em defesa de seus membros","Qualquer pessoa fisica em nome do povo","Somente sindicatos de servidores publicos"],"a":1,"hint":"A legitimidade coletiva tem rol constitucional especifico.","ref":"Art. 5, LXX","note":"A Constituicao legitima partido com representacao no Congresso, sindicato, entidade de classe e associacao nos termos constitucionais.","exp":"O mandado de seguranca coletivo nao foi aberto a qualquer individuo, mas a sujeitos coletivos com representatividade definida."},
     {"level":3,"q":"A acao popular pode ser proposta por:","o":["Qualquer eleitor, na qualidade de cidadao","Qualquer residente no territorio nacional","Apenas o Ministerio Publico","Apenas partido politico com representacao no Congresso"],"a":0,"hint":"A acao popular e instrumento de cidadania ativa, nao mera legitimidade difusa aberta a todos indistintamente.","ref":"Art. 5, LXXIII","note":"A legitimidade exige cidadania, e nao simples residencia.","exp":"A Constituicao atribui ao cidadao, e nao a qualquer pessoa, o poder de acionar a jurisdicao para combater ato lesivo ao patrimonio publico."},
     {"level":3,"q":"Quanto ao habeas corpus, e correto afirmar que:","o":["Serve para proteger patrimonio publico","So pode ser impetrado por advogado regularmente inscrito","Protege a liberdade de locomocao contra ilegalidade ou abuso de poder","Exige custas processuais e deposito previo"],"a":2,"hint":"Trata-se do remedio constitucional historicamente ligado ao ir e vir.","ref":"Art. 5, LXVIII","note":"O habeas corpus e gratuito e vocacionado a tutelar a liberdade de locomocao.","exp":"Seu objeto e estrito: nao protege qualquer direito, mas especificamente a liberdade de locomocao ameacada ou violada."},
@@ -90,7 +90,7 @@ QUESTIONS = [
     {"level":3,"q":"O direito de peticao aos Poderes Publicos em defesa de direitos ou contra ilegalidade ou abuso de poder e exercido:","o":["Mediante pagamento de taxa administrativa","Independentemente do pagamento de taxas","Apenas por advogado","Somente perante o Poder Judiciario"],"a":1,"hint":"A Constituicao trata essa garantia como franqueada ao administrado sem custo.","ref":"Art. 5, XXXIV, a","note":"O direito de peticao nao se condiciona ao recolhimento de taxas.","exp":"A regra busca impedir barreiras economicas ao acesso do individuo aos Poderes Publicos para defesa de direitos."},
     {"level":3,"q":"Na acao popular, salvo comprovada ma-fe, o autor fica isento de:","o":["Custas judiciais e onus da sucumbencia","Qualquer comparecimento processual","Prova documental minima","Capacidade processual"],"a":0,"hint":"A Constituicao buscou incentivar a fiscalizacao cidada sem risco economico excessivo.","ref":"Art. 5, LXXIII","note":"A isencao e afastada em caso de ma-fe.","exp":"A acao popular foi desenhada para permitir controle civico do patrimonio publico e da moralidade sem desestimular o cidadao por receio financeiro."},
     {"level":3,"q":"O mandado de seguranca individual protege direito liquido e certo nao amparado por habeas corpus ou habeas data, quando o responsavel pela ilegalidade ou abuso e:","o":["Qualquer particular com poder economico relevante","Autoridade publica ou agente de pessoa juridica no exercicio de atribuicoes do Poder Publico","Unicamente o Presidente da Republica","Apenas o Ministerio Publico Federal"],"a":1,"hint":"O polo passivo do mandado de seguranca tem definicao constitucional funcional.","ref":"Art. 5, LXIX","note":"O mandado de seguranca protege contra ato de autoridade publica ou de agente em exercicio de funcao publica.","exp":"O conceito constitucional de autoridade coatora e funcional, nao organico, alcancando agentes privados quando exercem delegacao publica."},
-    # â”€â”€ NIVEL 4 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── NIVEL 4 ────────────────────────────────────────────────────────────────
     {"level":4,"q":"A respeito da saude no texto constitucional, assinale a alternativa correta:","o":["A saude e servico facultativo do Estado","A saude e direito de todos e dever do Estado, garantida mediante politicas sociais e economicas que visem a reducao do risco de doenca e ao acesso universal e igualitario","A saude e direito apenas de contribuintes da seguridade social","A saude publica depende de autorizacao legislativa anual para existir"],"a":1,"hint":"A Constituicao vincula saude, risco e acesso universal.","ref":"Art. 196","note":"O direito a saude tem densidade normativa propria e nao e mera diretriz politica vazia.","exp":"O texto constitucional define a saude como direito fundamental social dotado de exigibilidade e vinculado a acesso universal e igualitario."},
     {"level":4,"q":"Entre os direitos dos trabalhadores urbanos e rurais, a irredutibilidade do salario admite excecao:","o":["Por ato unilateral do empregador em crise financeira","Por convencao ou acordo coletivo","Por decreto do Poder Executivo","Por regulamento interno da empresa"],"a":1,"hint":"A flexibilizacao depende de negociacao coletiva constitucionalmente reconhecida.","ref":"Art. 7, VI","note":"A irredutibilidade salarial nao e absoluta, mas a excecao tem forma constitucionalmente delimitada.","exp":"A Constituicao admite reducao salarial apenas dentro de arranjo coletivo, afastando imposicoes unilaterais do empregador ou do Estado."},
     {"level":4,"q":"Qual opcao corresponde a direito social expressamente previsto no Art. 6 apos evolucao do texto constitucional?","o":["Transporte","Protecao cambial","Intervencao administrativa","Resgate bancario"],"a":0,"hint":"Esse direito foi acrescido ao rol por emenda constitucional.","ref":"Art. 6","note":"O transporte integra o rol formal dos direitos sociais.","exp":"O Art. 6 sofreu ampliacoes ao longo do tempo, e o transporte passou a ser expressamente reconhecido como direito social."},
@@ -99,7 +99,7 @@ QUESTIONS = [
     {"level":4,"q":"O seguro-desemprego, em caso de desemprego involuntario, figura no texto constitucional como:","o":["Favor administrativo eventual","Direito dos trabalhadores urbanos e rurais","Beneficio exclusivo de servidor estatutario","Prestacao civil sem relevancia constitucional"],"a":1,"hint":"A Constituicao trata a perda involuntaria do emprego como risco social merecedor de protecao.","ref":"Art. 7, II","note":"O seguro-desemprego e garantia constitucional do trabalhador.","exp":"A previsao constitucional integra a rede minima de protecao contra vulnerabilidades associadas ao trabalho."},
     {"level":4,"q":"A assistencia social na Constituicao sera prestada a quem dela necessitar:","o":["Apenas mediante contribuicao previa ao sistema","Independentemente de contribuicao a seguridade social","Somente a trabalhadores formalmente registrados","Mediante comprovacao de renda minima por tres anos"],"a":1,"hint":"A assistencia social difere da previdencia exatamente neste ponto.","ref":"Art. 203","note":"A assistencia social independe de contribuicao previa.","exp":"A Constituicao distingue assistencia social de previdencia: aquela nao exige contribuicao; esta sim."},
     {"level":4,"q":"A protecao ao trabalho noturno na Constituicao se expressa, entre outros pontos, por:","o":["Remuneracao do trabalho noturno superior a do diurno","Livre supressao de adicional por contrato individual","Equiparacao obrigatoria entre noturno e diurno sem adicional","Proibicao absoluta de trabalho noturno"],"a":0,"hint":"A resposta esta no rol do Art. 7.","ref":"Art. 7, IX","note":"A Constituicao assegura remuneracao do trabalho noturno superior a do diurno.","exp":"O adicional noturno traduz reconhecimento constitucional do maior desgaste social e biologico associado ao labor noturno."},
-    # â”€â”€ NIVEL 5 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── NIVEL 5 ────────────────────────────────────────────────────────────────
     {"level":5,"q":"Uma autoridade municipal exige licenca previa para passeata pacifica, sem armas, em praca publica, ainda que os organizadores tenham apresentado aviso previo. A exigencia e:","o":["Constitucional, porque toda reuniao publica depende de autorizacao","Inconstitucional, porque a liberdade de reuniao exige previo aviso, nao licenca","Constitucional apenas se o tema da manifestacao for politico","Constitucional apenas se a praca for bem publico municipal"],"a":1,"hint":"O aviso organiza o espaco publico; a licenca converte liberdade em permissao estatal.","ref":"Art. 5, XVI","note":"A Constituicao exige previo aviso, nao autorizacao.","exp":"Transformar reuniao pacifica em atividade dependente de licenca esvazia uma liberdade publica expressamente protegida."},
     {"level":5,"q":"Com ordem judicial valida, policiais ingressam as 23h na residencia de investigado apenas para cumprir busca domiciliar, sem flagrante, sem desastre e sem pedido de socorro. A medida e:","o":["Constitucional, porque a ordem judicial afasta qualquer limite horario","Inconstitucional, porque a ordem judicial, por si so, legitima ingresso apenas durante o dia","Constitucional, porque toda busca criminal dispensa as restricoes do Art. 5","Constitucional, desde que haja investigacao de crime hediondo"],"a":1,"hint":"A ordem judicial nao e cheque em branco para ingresso noturno.","ref":"Art. 5, XI","note":"Sem outra excecao constitucional, a ordem judicial se cumpre durante o dia.","exp":"A garantia domiciliar estabelece limite expresso para o cumprimento de ordem judicial, preservando a intimidade domiciliar noturna."},
     {"level":5,"q":"Brasileiro naturalizado e acusado de comprovado envolvimento com trafico ilicito de entorpecentes apos a naturalizacao. Diante do texto constitucional, a extradicao:","o":["E vedada em qualquer hipotese apos a naturalizacao","E possivel, porque a Constituicao admite extradicao do naturalizado por comprovado envolvimento com trafico ilicito de entorpecentes","So seria possivel se o crime fosse politico","Depende de previa cassacao da naturalizacao pelo Executivo"],"a":1,"hint":"A regra do naturalizado tem duas hipoteses constitucionais especificas.","ref":"Art. 5, LI","note":"O trafico ilicito de entorpecentes aparece expressamente como excecao constitucional.","exp":"O texto constitucional trata o naturalizado de forma distinta do nato e preve excecao expressa para trafico ilicito de entorpecentes."},
@@ -108,19 +108,19 @@ QUESTIONS = [
     {"level":5,"q":"Grupo de servidores tem direito constitucional inviabilizado ha anos porque o legislador nao editou a norma regulamentadora indispensavel. A medida constitucional mais adequada e:","o":["Habeas data","Mandado de injuncao","Acao popular","Habeas corpus"],"a":1,"hint":"O foco aqui e a omissao normativa que bloqueia direito.","ref":"Art. 5, LXXI","note":"O mandado de injuncao foi concebido para enfrentar a omissao regulamentadora constitucionalmente relevante.","exp":"Quando a falta de norma inviabiliza direito ou liberdade constitucional, o remedio adequado e o mandado de injuncao."},
     {"level":5,"q":"Autoridade policial determina abertura generalizada de correspondencia fisica de servidores para apuracao administrativa, sem ordem judicial. A medida e:","o":["Constitucional, por se tratar de servidores publicos","Inconstitucional, porque viola a inviolabilidade da correspondencia","Constitucional, desde que haja sindicancia interna","Constitucional, se a correspondencia estiver no local de trabalho"],"a":1,"hint":"A inviolabilidade da correspondencia nao desaparece por vinculacao funcional ao Estado.","ref":"Art. 5, XII","note":"A protecao constitucional do sigilo de correspondencia nao cede a controles administrativos genericos.","exp":"A administracao nao pode afastar, por mera conveniencia investigativa, garantia constitucional de sigilo de correspondencia."},
     {"level":5,"q":"Lei municipal proibe reuniao em praca historica da cidade nos fins de semana, alegando preservacao do patrimonio. Considerando o Art. 5, XVI, essa restricao e:","o":["Plenamente constitucional, pois patrimonio historico justifica qualquer restricao","Inconstitucional, pois a Constituicao nao permite restricoes locais a liberdade de reuniao","Potencialmente inconstitucional se a restricao generalizada anular o nucleo essencial da liberdade de reuniao","Constitucional apenas se aprovada por referendum popular"],"a":2,"hint":"A colisao entre liberdade de reuniao e preservacao do patrimonio exige proporcionalidade.","ref":"Art. 5, XVI e Art. 216","note":"Restricoes a direitos fundamentais devem ser proporcionais e nao podem esvaziar o nucleo essencial da garantia.","exp":"A analise constitucional exige ponderacao: restricoes generalizadas que inviabilizam o exercicio da liberdade sao inconstitucionais, ainda que o fim seja legitimo."},
-    # â”€â”€ V/F QUESTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── V/F QUESTIONS ──────────────────────────────────────────────────────
     {"level":1,"type":"tf","q":"Direitos fundamentais sao absolutos e nao admitem nenhuma restricao.","o":["Verdadeiro","Falso"],"a":1,"hint":"Pense na possibilidade de colisao entre direitos fundamentais.","ref":"Art. 5 e doutrina","note":"Direitos fundamentais nao sao absolutos; podem ser restringidos proporcionalmente.","exp":"A doutrina e o STF reconhecem que direitos fundamentais podem colidir entre si, exigindo ponderacao e proporcionalidade.","diff":"easy"},
     
-    # â”€â”€ GOLDEN QUESTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── GOLDEN QUESTIONS ──────────────────────────────────────────────
     {"level":2,"q":"O principio da presuncao de inocencia, previsto no Art. 5, LVII, da CF/88, estabelece que ninguem sera considerado culpado ate:","o":["A denuncia do Ministerio Publico","O transito em julgado de sentenca penal condenatoria","A prisao em flagrante","O indiciamento policial"],"a":1,"hint":"A Constituicao protege o acusado ate o esgotamento das vias recursais.","ref":"Art. 5, LVII","note":"Ninguem sera considerado culpado ate o transito em julgado de sentenca penal condenatoria.","exp":"O principio da presuncao de inocencia e clausula petrea e garante que a culpa so se estabelece definitivamente apos o transito em julgado da sentenca condenatoria.","diff":"hard",    "golden":True},
         {"level":4,"q":"A Constituicao Federal de 1988 preve que a educacao e direito de todos e dever do Estado e da familia, devendo ser promovida e incentivada com a colaboracao da sociedade. Qual artigo fundamenta essa disposicao?","o":["Art. 196","Art. 205","Art. 215","Art. 225"],"a":1,"hint":"Este artigo inaugura o capitulo sobre educacao na CF/88.","ref":"Art. 205","note":"A educacao e direito de todos e dever do Estado e da familia.","exp":"O Art. 205 estabelece o dever compartilhado entre Estado, familia e sociedade na promocao da educacao, visando o pleno desenvolvimento da pessoa, seu preparo para a cidadania e qualificacao para o trabalho.","diff":"hard","golden":True},
-    # â”€â”€ BOSS QUESTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── BOSS QUESTIONS ────────────────────────────────────────────────
     {"level":1,"q":"CASO PRATICO: Um cidadao teve sua residencia invadida por policiais as 23h, sem mandado judicial e sem flagrante delito. Com base na CF/88, analise: a invasao foi constitucional?","o":["Sim, pois a policia tem poder de investigacao","Nao, pois fora das hipoteses constitucionais (flagrante, desastre, socorro) a entrada depende de ordem judicial durante o DIA","Sim, desde que haja autorizacao verbal do delegado","Nao, porque nenhuma entrada em domicilio e permitida"],"a":1,"hint":"Atencao ao periodo do dia e as excecoes constitucionais.","ref":"Art. 5, XI","note":"A casa e asilo inviolavel. A entrada com ordem judicial so e permitida durante o dia.","exp":"A CF/88 estabelece que o ingresso em domicilio alheio sem consentimento so pode ocorrer em flagrante delito, desastre, socorro, ou por determinacao judicial DURANTE O DIA. A invasao noturna sem mandado e flagrante viola diretamente o Art. 5, XI.","diff":"hard",    "boss":True},
-        {"level":2,"q":"CASO PRATICO: O Congresso aprovou emenda constitucional que permite a pena de morte para crimes hediondos. Esta emenda e constitucional?","o":["Sim, pois o Congresso tem poder constituinte derivado","Nao, pois o direito a vida e clausula petrea e nao pode ser abolido por emenda","Sim, desde que aprovada por maioria absoluta","Depende de referendum popular"],"a":1,"hint":"Considere os limites materiais ao poder de reforma constitucional.","ref":"Art. 60, Â§4, IV","note":"Os direitos e garantias individuais sao clausulas petreas.","exp":"O Art. 60, Â§4, IV proibe emendas tendentes a abolir direitos e garantias individuais. O direito a vida (Art. 5, caput) e clausula petrea. Uma emenda que institua pena de morte fora das hipoteses ja previstas (guerra declarada) seria inconstitucional por violar o nucleo imodificavel da Constituicao.","diff":"hard","boss":True},
+        {"level":2,"q":"CASO PRATICO: O Congresso aprovou emenda constitucional que permite a pena de morte para crimes hediondos. Esta emenda e constitucional?","o":["Sim, pois o Congresso tem poder constituinte derivado","Nao, pois o direito a vida e clausula petrea e nao pode ser abolido por emenda","Sim, desde que aprovada por maioria absoluta","Depende de referendum popular"],"a":1,"hint":"Considere os limites materiais ao poder de reforma constitucional.","ref":"Art. 60, §4, IV","note":"Os direitos e garantias individuais sao clausulas petreas.","exp":"O Art. 60, §4, IV proibe emendas tendentes a abolir direitos e garantias individuais. O direito a vida (Art. 5, caput) e clausula petrea. Uma emenda que institua pena de morte fora das hipoteses ja previstas (guerra declarada) seria inconstitucional por violar o nucleo imodificavel da Constituicao.","diff":"hard","boss":True},
         {"level":3,"q":"CASO PRATICO: Um juiz determinou a interceptacao telefonica de um suspeito por 60 dias, sem renovacao fundamentada. A interceptacao e legal?","o":["Sim, o juiz tem ampla discricionariedade","Nao, a Lei 9.296/96 limita a interceptacao a 15 dias, renovavel por igual periodo com fundamentacao","Sim, desde que haja inquerito policial aberto","Depende da gravidade do crime"],"a":1,"hint":"A interceptacao telefonica tem prazo legal definido e exige fundamentacao para renovacao.","ref":"Art. 5, XII e Lei 9.296/96","note":"A interceptacao telefonica tem prazo maximo de 15 dias, renovavel por decisao fundamentada.","exp":"A Lei 9.296/96 regulamenta o Art. 5, XII da CF/88. A interceptacao so pode durar 15 dias, renovavel por igual periodo mediante decisao judicial fundamentada. Uma interceptacao de 60 dias sem renovacao fundamentada viola tanto a lei quanto a garantia constitucional do sigilo das comunicacoes.","diff":"hard","boss":True},
         {"level":4,"q":"CASO PRATICO: Um municipio criou lei proibindo manifestacoes publicas em todas as pracas da cidade. Analise a constitucionalidade dessa lei.","o":["Constitucional, pois o municipio tem autonomia legislativa","Inconstitucional, pois viola a liberdade de reuniao (Art. 5, XVI) que garante reuniao pacifica em locais abertos independente de autorizacao","Constitucional, se houver justificativa de ordem publica","Depende de regulamentacao federal"],"a":1,"hint":"A liberdade de reuniao e direito fundamental que independe de autorizacao estatal.","ref":"Art. 5, XVI","note":"Todos podem reunir-se pacificamente, sem armas, em locais abertos ao publico, independentemente de autorizacao.","exp":"O Art. 5, XVI garante o direito de reuniao pacifica em locais abertos ao publico, independentemente de autorizacao, bastando previo aviso a autoridade competente. Uma lei municipal que proiba manifestacoes em todas as pracas seria inconstitucional por esvaziar o conteudo essencial desse direito fundamental.","diff":"hard","boss":True},
         {"level":5,"q":"CASO PRATICO: O STF deve julgar um caso envolvendo conflito entre liberdade de expressao e direito a honra. Um jornalista publicou reportagem com informacoes verdadeiras mas prejudiciais a reputacao de um politico. Como resolver esse conflito?","o":["A liberdade de expressao sempre prevalece sobre a honra","A honra sempre prevalece sobre a liberdade de expressao","Deve-se aplicar a tecnica da ponderacao, avaliando proporcionalidade, interesse publico e veracidade das informacoes","O caso deve ser resolvido pela legislacao infraconstitucional apenas"],"a":2,"hint":"A colisao de direitos fundamentais exige tecnica hermeneutica especifica.","ref":"Art. 5, IV, V, IX, X e principio da proporcionalidade","note":"Conflitos entre direitos fundamentais sao resolvidos pela ponderacao.","exp":"Quando dois direitos fundamentais colidem, o STF aplica a tecnica da ponderacao (proporcionalidade). Nao ha hierarquia absoluta entre direitos fundamentais. No caso, deve-se avaliar: (1) veracidade da informacao, (2) interesse publico, (3) forma da publicacao, (4) proporcionalidade da restricao. Informacoes verdadeiras sobre agentes publicos gozam de maior protecao constitucional.","diff":"hard","boss":True},
-    # â”€â”€ FILL-IN-BLANK QUESTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── FILL-IN-BLANK QUESTIONS ───────────────────────────────────────
     {"level":1,"type":"fill","q":"Complete: 'Todo poder emana do ______, que o exerce por meio de representantes eleitos ou diretamente.'","answer":"povo","hint":"Art. 1, paragrafo unico da CF/88.","ref":"Art. 1, paragrafo unico","note":"Todo poder emana do povo.","exp":"O principio da soberania popular e fundamento do Estado Democratico de Direito, estabelecendo que a legitimidade do poder politico tem origem no povo.","diff":"easy"},
     {"level":1,"type":"fill","q":"Complete: 'A Republica Federativa do Brasil tem como fundamentos: a soberania, a cidadania, a ______ da pessoa humana.'","answer":"dignidade","hint":"Art. 1, III da CF/88.","ref":"Art. 1, III","note":"A dignidade da pessoa humana e fundamento da Republica.","exp":"A dignidade da pessoa humana e um dos cinco fundamentos da Republica Federativa do Brasil, funcionando como valor-fonte de todo o ordenamento juridico.","diff":"easy"},
     {"level":2,"type":"fill","q":"Complete: 'A casa e asilo ______ do individuo, ninguem nela podendo penetrar sem consentimento do morador.'","answer":"inviolavel","hint":"Art. 5, XI da CF/88.","ref":"Art. 5, XI","note":"A casa e asilo inviolavel do individuo.","exp":"A inviolabilidade de domicilio e direito fundamental que protege a esfera de privacidade do individuo, admitindo excecoes apenas nas hipoteses taxativas da Constituicao.","diff":"easy"},
@@ -407,7 +407,7 @@ function useSkip() {
   state.used.skip = true;
   if (ui.btnSkip) ui.btnSkip.disabled = true;
   playSound('skip');
-  showAssist('â­ Pergunta pulada! Sem pontos.');
+  showAssist('⏭ Pergunta pulada! Sem pontos.');
   state.answered = true;
   clearInterval(state.ticker);
   state.wrongQs.push(state.deck[state.idx]);
@@ -420,7 +420,7 @@ function useExtraTime() {
   state.used.extraTime = true;
   if (ui.btnExtraTime) ui.btnExtraTime.disabled = true;
   state.timeLeft += 15;
-  showAssist('â± +15 segundos adicionados!');
+  showAssist('⏱ +15 segundos adicionados!');
   playSound('tick');
 }
 
@@ -878,9 +878,9 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
   body{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ══════════════════════════════════════════════════════════════════════
    ACCOUNT SYSTEM
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+   ══════════════════════════════════════════════════════════════════════ */
 #auth-wall{
   position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;
   background:linear-gradient(160deg,#02040a 0%,#05090f 50%,#030710 100%);
@@ -953,13 +953,13 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
 </style>
 </head>
 <body>
-<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+<!-- ═══════════════════════════════════════════════════════════════════
      AUTH WALL — aparece antes do jogo
-     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+     ═══════════════════════════════════════════════════════════════════ -->
 <div id='auth-wall'>
   <div class='auth-box'>
     <div class='auth-logo'>
-      <span class='al-icon'>⚖ï¸</span>
+      <span class='al-icon'>⚖️</span>
       <h1>Guardiao da Constituicao</h1>
       <p>Crie sua conta ou entre para salvar seu progresso</p>
     </div>
@@ -979,7 +979,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
       </div>
       <div class='auth-error' id='login-error'></div>
       <div class='auth-success' id='login-success'></div>
-      <button class='auth-submit' id='btn-login' onclick='doLogin()'>Entrar na Arena ⚔ï¸</button>
+      <button class='auth-submit' id='btn-login' onclick='doLogin()'>Entrar na Arena ⚔️</button>
     </div>
     <!-- REGISTER -->
     <div id='auth-register-form' style='display:none'>
@@ -1001,7 +1001,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
       </div>
       <div class='auth-error' id='reg-error'></div>
       <div class='auth-success' id='reg-success'></div>
-      <button class='auth-submit' id='btn-register' onclick='doRegister()'>Criar minha conta ðŸ›ï¸</button>
+      <button class='auth-submit' id='btn-register' onclick='doRegister()'>Criar minha conta 🏛️</button>
     </div>
     <div class='auth-guest'>
       <button onclick='playAsGuest()'>Jogar sem conta (progresso nao salvo)</button>
@@ -1029,16 +1029,16 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
       <div id='user-badge' style='display:none'>
         <span class='ub-avatar' id='ub-av'>📚</span>
         <span class='ub-name' id='ub-name'>Jogador</span>
-        <span class='ub-logout' onclick='doLogout()' title='Sair'>â</span>
+        <span class='ub-logout' onclick='doLogout()' title='Sair'>⏏</span>
       </div>
       <button class='icon-btn' id='btn-sound' title='Som'>🔊</button>
-      <button class='icon-btn' id='btn-settings' title='Configuracoes'>⚙ï¸</button>
+      <button class='icon-btn' id='btn-settings' title='Configuracoes'>⚙️</button>
     </div>
   </section>
 
   <!-- HERO -->
   <section class='box hero'>
-    <div class='eyebrow'>⚖ï¸ Arena Constitucional — Ranking em Tempo Real</div>
+    <div class='eyebrow'>⚖️ Arena Constitucional — Ranking em Tempo Real</div>
     <h1>Guardiao da Constituicao</h1>
     <p>Prove que voce domina a Constituicao Federal de 1988. Cinco niveis progressivos, multiplos modos de jogo, sistema de XP e progressao, ranking global ao vivo.</p>
     <div class='hero-stats'>
@@ -1069,7 +1069,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
               <p>15 questoes, 5 niveis progressivos</p>
             </div>
             <div class='mode-card' data-mode='infinite' onclick='selectMode("infinite")'>
-              <div class='mode-icon'>♾ï¸</div>
+              <div class='mode-icon'>♾️</div>
               <h3>Infinito</h3>
               <p>Jogue ate errar. Quanto mais longe, melhor!</p>
             </div>
@@ -1097,16 +1097,16 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
         </div>
         <div class='info' style='margin-top:14px'><strong>Ranking:</strong> salvo localmente no servidor. Para compartilhar entre jogadores, mantenha o servidor Python rodando na rede.</div>
         <div style='margin-top:18px;padding:12px 16px;border-radius:12px;background:linear-gradient(135deg,rgba(21,101,192,.08),rgba(21,101,192,.03));border:1px solid rgba(21,101,192,.25);text-align:center;font-size:.82rem;color:#7ab0e0'>
-          <span style='font-size:1rem'>⚖ï¸</span> Programado por <strong style='color:#c8a000'>Icaro Lucas Pereira Batista</strong>
+          <span style='font-size:1rem'>⚖️</span> Programado por <strong style='color:#c8a000'>Icaro Lucas Pereira Batista</strong>
         </div>
       </section>
 
       <!-- GAME -->
       <section class='box panel hidden' id='game'>
         <div class='lives-bar' id='lives-bar'>
-          <span class='heart' id='heart-1'>â¤ï¸</span>
-          <span class='heart' id='heart-2'>â¤ï¸</span>
-          <span class='heart' id='heart-3'>â¤ï¸</span>
+          <span class='heart' id='heart-1'>❤️</span>
+          <span class='heart' id='heart-2'>❤️</span>
+          <span class='heart' id='heart-3'>❤️</span>
         </div>
         <div class='hud'>
           <div class='hud-box'><div class='lbl'>Pontuacao</div><div class='val' id='hud-score'>0</div></div>
@@ -1150,11 +1150,11 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
             <small>Uso unico por partida</small>
           </div>
           <div class='help-card'>
-            <button class='btn secondary' id='btn-skip' style='width:100%'>â­ Pular pergunta</button>
+            <button class='btn secondary' id='btn-skip' style='width:100%'>⏭ Pular pergunta</button>
             <small>Uso unico por partida</small>
           </div>
           <div class='help-card'>
-            <button class='btn secondary' id='btn-extra-time' style='width:100%'>â± +15 segundos</button>
+            <button class='btn secondary' id='btn-extra-time' style='width:100%'>⏱ +15 segundos</button>
             <small>Uso unico por partida</small>
           </div>
         </div>
@@ -1174,7 +1174,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
       <!-- RANKING -->
       <section class='box panel'>
         <div class='rank-hdr'>
-          <h2>ðŸ† Ranking Global</h2>
+          <h2>🏆 Ranking Global</h2>
           <span class='chip'>Atualiza 5s</span>
         </div>
         <div class='ranking' id='ranking-list'>
@@ -1197,7 +1197,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
         <p id='res-text'></p>
         <div class='stat-grid' id='stat-grid'></div>
         <div id='wrong-section' class='hidden'>
-          <div style='font-size:.88rem;font-weight:800;color:#7ab0e0;margin-bottom:8px'>âŒ Perguntas que voce errou:</div>
+          <div style='font-size:.88rem;font-weight:800;color:#7ab0e0;margin-bottom:8px'>❌ Perguntas que voce errou:</div>
           <div class='wrong-list' id='wrong-list'></div>
         </div>
         <div class='save-row'>
@@ -1214,7 +1214,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
 
       <!-- CONSTITUTION MAP -->
       <section class='box panel' id='const-map-section'>
-        <h2>🗺ï¸ Mapa da Constituicao</h2>
+        <h2>🗺️ Mapa da Constituicao</h2>
         <div class='const-map' id='const-map'></div>
       </section>
 
@@ -1261,17 +1261,17 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
 <script>
 'use strict';
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ══════════════════════════════════════════════════════════════════════
    ACCOUNT SYSTEM
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+   ══════════════════════════════════════════════════════════════════════ */
 
 const AVATARS_AUTH = [
   {id:'estudante', icon:'📚', name:'Estudante'},
-  {id:'advogado',  icon:'👨â€⚖ï¸', name:'Advogado'},
-  {id:'juiza',     icon:'👩â€⚖ï¸', name:'Juiza'},
-  {id:'ministra',  icon:'⚖ï¸',  name:'Ministra'},
-  {id:'professor', icon:'🧑â€ðŸ«', name:'Professor'},
-  {id:'guardiao',  icon:'🛡ï¸', name:'Guardiao'},
+  {id:'advogado',  icon:'👨‍⚖️', name:'Advogado'},
+  {id:'juiza',     icon:'👩‍⚖️', name:'Juiza'},
+  {id:'ministra',  icon:'⚖️',  name:'Ministra'},
+  {id:'professor', icon:'🧑‍🏫', name:'Professor'},
+  {id:'guardiao',  icon:'🛡️', name:'Guardiao'},
 ];
 
 let currentUser = null;   // {username, avatar, guest}
@@ -1353,7 +1353,7 @@ async function doLogin() {
   } catch(e) {
     showAuthError('login-error', e.message === 'not_found' ? 'Conta nao encontrada.' : 'Erro de conexao.');
   } finally {
-    btn.disabled = false; btn.textContent = 'Entrar na Arena ⚔ï¸';
+    btn.disabled = false; btn.textContent = 'Entrar na Arena ⚔️';
   }
 }
 
@@ -1389,7 +1389,7 @@ async function doRegister() {
   } catch(e) {
     showAuthError('reg-error','Erro ao criar conta. Tente novamente.');
   } finally {
-    btn.disabled = false; btn.textContent = 'Criar minha conta ðŸ›ï¸';
+    btn.disabled = false; btn.textContent = 'Criar minha conta 🏛️';
   }
 }
 
@@ -1578,11 +1578,11 @@ function computeMedals() {
 
   // 3. Remedios perfeito
   if (stats[3] && stats[3].total > 0 && stats[3].ok === stats[3].total)
-    medals.push({id:'rem', name:'⚖ï¸ Mestre dos Remedios', desc:'Dominou todos os remedios constitucionais.'});
+    medals.push({id:'rem', name:'⚖️ Mestre dos Remedios', desc:'Dominou todos os remedios constitucionais.'});
 
   // 4. Casos praticos
   if (stats[5] && stats[5].ok >= 2)
-    medals.push({id:'caso', name:'ðŸ›ï¸ Caso Concreto', desc:'Bom desempenho nos casos praticos.'});
+    medals.push({id:'caso', name:'🏛️ Caso Concreto', desc:'Bom desempenho nos casos praticos.'});
 
   // 5. Sequencia
   if (Object.values(stats).some(x => x.bestStreak >= 4))
@@ -1598,11 +1598,11 @@ function computeMedals() {
 
   // 8. Iniciante
   if (allOk >= 1 && allTot >= 1 && !medals.some(m=>m.id==='first'))
-    medals.push({id:'first', name:'â­ Primeiro Acerto', desc:'Acertou a primeira questao!'});
+    medals.push({id:'first', name:'⭐ Primeiro Acerto', desc:'Acertou a primeira questao!'});
 
   // 9. Velocista (menos de 2 min)
   if (sec > 0 && sec <= 120 && allTot >= 15)
-    medals.push({id:'fast', name:'â±ï¸ Velocista', desc:'Terminou em menos de 2 minutos!'});
+    medals.push({id:'fast', name:'⏱️ Velocista', desc:'Terminou em menos de 2 minutos!'});
 
   // 10. Sequencia longa
   if (Object.values(stats).some(x => x.bestStreak >= 8))
@@ -1610,7 +1610,7 @@ function computeMedals() {
 
   // 11. Modo infinito longe
   if (gameMode === 'infinite' && allOk >= 20)
-    medals.push({id:'infinite20', name:'♾ï¸ Maratonista', desc:'20+ acertos no modo infinito!'});
+    medals.push({id:'infinite20', name:'♾️ Maratonista', desc:'20+ acertos no modo infinito!'});
 
   // 12. Speedrun master
   if (gameMode === 'speedrun' && allOk >= 10)
@@ -1622,7 +1622,7 @@ function computeMedals() {
 
   // 14. Veterano (10+ partidas)
   if (profile.gamesPlayed >= 10)
-    medals.push({id:'veteran', name:'🎖ï¸ Veterano', desc:'10+ partidas jogadas!'});
+    medals.push({id:'veteran', name:'🎖️ Veterano', desc:'10+ partidas jogadas!'});
 
   // 15. Streak diario
   if (profile.dailyStreak >= 5)
@@ -1658,7 +1658,7 @@ function showMedalToast(medal, delayMs) {
   setTimeout(() => {
     const t = document.createElement('div');
     t.className = 'm-toast';
-    t.innerHTML = `<div class='m-toast-head'>ðŸ… Medalha desbloqueada!</div>
+    t.innerHTML = `<div class='m-toast-head'>🏅 Medalha desbloqueada!</div>
                    <div class='m-toast-name'>${medal.name}</div>
                    <div class='m-toast-desc'>${medal.desc}</div>`;
     ui.medalToasts.appendChild(t);
@@ -1725,7 +1725,7 @@ function setPhase(phase, seconds) {
     ui.hudTimer.textContent   = '📖 ' + seconds + 's';
   } else if (phase === 'answering') {
     ui.phaseBar.className  = 'phase-bar answering';
-    ui.phaseLabel.textContent = 'â³ Escolha sua resposta';
+    ui.phaseLabel.textContent = '⏳ Escolha sua resposta';
     ui.hudTimer.textContent   = seconds + 's';
   } else if (phase === 'done-ok') {
     ui.phaseBar.className  = 'phase-bar done-ok';
@@ -1734,12 +1734,12 @@ function setPhase(phase, seconds) {
     ui.hudTimer.textContent   = '--';
   } else if (phase === 'done-no') {
     ui.phaseBar.className  = 'phase-bar done-no';
-    ui.phaseLabel.textContent = 'âŒ Resposta incorreta';
+    ui.phaseLabel.textContent = '❌ Resposta incorreta';
     ui.phaseCd.textContent = '';
     ui.hudTimer.textContent   = '--';
   } else if (phase === 'done-time') {
     ui.phaseBar.className  = 'phase-bar done-no';
-    ui.phaseLabel.textContent = 'â° Tempo esgotado';
+    ui.phaseLabel.textContent = '⏰ Tempo esgotado';
     ui.phaseCd.textContent = '';
     ui.hudTimer.textContent   = '--';
   }
@@ -1778,16 +1778,16 @@ function renderQuestion() {
   const pts = Math.round(lv.base * mult);
   ui.counter.textContent = 'Pergunta ' + (state.idx+1) + '/' + state.deck.length;
   let ptsTxt = '+' + pts + ' pts';
-  if (isGoldenQuestion(q)) ptsTxt = 'â­ ' + ptsTxt + ' (3x)';
+  if (isGoldenQuestion(q)) ptsTxt = '⭐ ' + ptsTxt + ' (3x)';
   if (isBossQuestion(q)) ptsTxt = '🧠 BOSS ' + ptsTxt;
   if (furyActive) ptsTxt += ' 🔥x2';
   ui.ptsPill.textContent = ptsTxt;
 
   // Question text with badges
   let qPrefix = '';
-  if (isGoldenQuestion(q)) qPrefix = '<span class="golden-badge">â­ Questao Dourada</span> ';
+  if (isGoldenQuestion(q)) qPrefix = '<span class="golden-badge">⭐ Questao Dourada</span> ';
   if (isBossQuestion(q)) qPrefix = '<span class="boss-badge">🧠 Pergunta Chefe</span> ';
-  if (q.type === 'fill') qPrefix += '<span class="study-badge">âœï¸ Preencher</span> ';
+  if (q.type === 'fill') qPrefix += '<span class="study-badge">✍️ Preencher</span> ';
   ui.qtext.innerHTML = qPrefix + q.q;
 
   // Help buttons
@@ -1911,7 +1911,7 @@ async function doAnswer(sel, timedOut) {
 
   state.lvStats[q.level].total++;
   let isCorrect = false;
-  let fbTitle = timedOut ? 'â° Tempo esgotado' : WRONG_REACTIONS[Math.floor(Math.random() * WRONG_REACTIONS.length)];
+  let fbTitle = timedOut ? '⏰ Tempo esgotado' : WRONG_REACTIONS[Math.floor(Math.random() * WRONG_REACTIONS.length)];
   let fbBody  = q.exp;
 
   // Anti-guess check
@@ -2004,7 +2004,7 @@ async function doAnswer(sel, timedOut) {
   const narr = getNarratorComment(isCorrect, q.diff || 'normal');
   const narrDiv = document.createElement('div');
   narrDiv.className = 'narrator-box';
-  narrDiv.innerHTML = '<span class="nr-icon">🎙ï¸</span>' + narr;
+  narrDiv.innerHTML = '<span class="nr-icon">🎙️</span>' + narr;
   ui.feedbackBox.appendChild(narrDiv);
 
   // Phase indicator
@@ -2150,7 +2150,7 @@ function useSkip() {
   state.used.skip = true;
   if (ui.btnSkip) ui.btnSkip.disabled = true;
   playSound('skip');
-  showAssist('â­ Pergunta pulada! Sem pontos.');
+  showAssist('⏭ Pergunta pulada! Sem pontos.');
   state.answered = true;
   clearInterval(state.ticker);
   state.wrongQs.push(state.deck[state.idx]);
@@ -2163,7 +2163,7 @@ function useExtraTime() {
   state.used.extraTime = true;
   if (ui.btnExtraTime) ui.btnExtraTime.disabled = true;
   state.timeLeft += 15;
-  showAssist('â± +15 segundos adicionados!');
+  showAssist('⏱ +15 segundos adicionados!');
   playSound('tick');
 }
 
@@ -2177,7 +2177,7 @@ function renderRanking(list) {
   ui.rankingList.innerHTML = sorted.slice(0,12).map((e,i) => `
     <div class='rank-item' style='animation-delay:${i*0.06}s'>
       <span class='rk-name'>${icons[i]||((i+1)+'.')} ${e.name} — ${e.score} pts</span>
-      <span class='rk-meta'>â± ${fmtTime(e.completion_seconds)} | ✓ ${e.correct_answers}/${e.total_questions}</span>
+      <span class='rk-meta'>⏱ ${fmtTime(e.completion_seconds)} | ✓ ${e.correct_answers}/${e.total_questions}</span>
       <span class='rk-sub'>${e.title}${e.medals&&e.medals.length?' · '+e.medals.join(', '):''}</span>
       <span class='rk-sub'>${e.saved_at}</span>
     </div>
@@ -2289,7 +2289,7 @@ function renderLevelCards() {
     <div class='level-card'>
       <span class='chip'>Nivel ${lv.id}</span>
       <h3>${lv.name}</h3>
-      <p>${QPL} questoes sorteadas<br>+${lv.base} pts base por acerto<br>📖 ${lv.read}s leitura + â³ ${lv.answer}s resposta</p>
+      <p>${QPL} questoes sorteadas<br>+${lv.base} pts base por acerto<br>📖 ${lv.read}s leitura + ⏳ ${lv.answer}s resposta</p>
     </div>
   `).join('');
 }
@@ -2329,29 +2329,29 @@ ui.btnInstall.addEventListener('click', async () => {
 
 
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ══════════════════════════════════════════════════════════════════════
    NEW SYSTEMS - XP, Levels, Modes, Sound, Themes, etc.
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+   ══════════════════════════════════════════════════════════════════════ */
 
 /* ── PLAYER LEVELS ─────────────────────────────────────────────────── */
 const PLAYER_LEVELS = [
   {level:1,  xp:0,    title:'Estudante',               icon:'📚'},
-  {level:2,  xp:100,  title:'Estagiario Juridico',     icon:'ðŸ“'},
+  {level:2,  xp:100,  title:'Estagiario Juridico',     icon:'📝'},
   {level:3,  xp:250,  title:'Bacharel em Direito',     icon:'🎓'},
-  {level:5,  xp:500,  title:'Jurista',                  icon:'⚖ï¸'},
-  {level:8,  xp:1000, title:'Magistrado',               icon:'👨â€⚖ï¸'},
-  {level:10, xp:1500, title:'Desembargador',            icon:'ðŸ›ï¸'},
-  {level:15, xp:2500, title:'Ministro do STF',          icon:'ðŸ†'},
+  {level:5,  xp:500,  title:'Jurista',                  icon:'⚖️'},
+  {level:8,  xp:1000, title:'Magistrado',               icon:'👨‍⚖️'},
+  {level:10, xp:1500, title:'Desembargador',            icon:'🏛️'},
+  {level:15, xp:2500, title:'Ministro do STF',          icon:'🏆'},
   {level:20, xp:4000, title:'Guardiao da Constituicao', icon:'👑'},
 ];
 
 const AVATARS = [
   {id:'estudante', icon:'📚', name:'Estudante'},
-  {id:'advogado',  icon:'👨â€⚖ï¸', name:'Advogado'},
-  {id:'juiza',     icon:'👩â€⚖ï¸', name:'Juiza'},
-  {id:'ministra',  icon:'⚖ï¸',  name:'Ministra'},
-  {id:'professor', icon:'🧑â€ðŸ«', name:'Professor'},
-  {id:'guardiao',  icon:'🛡ï¸', name:'Guardiao'},
+  {id:'advogado',  icon:'👨‍⚖️', name:'Advogado'},
+  {id:'juiza',     icon:'👩‍⚖️', name:'Juiza'},
+  {id:'ministra',  icon:'⚖️',  name:'Ministra'},
+  {id:'professor', icon:'🧑‍🏫', name:'Professor'},
+  {id:'guardiao',  icon:'🛡️', name:'Guardiao'},
 ];
 
 const THEMES_MAP = {
@@ -2370,19 +2370,19 @@ const UNLOCKS = [
 
 const CORRECT_REACTIONS = [
   '🎉 Excelente interpretacao constitucional!',
-  '⚖ï¸ Perfeito! Fundamentacao juridica impecavel!',
-  'ðŸ›ï¸ Nem o STF discordaria!',
+  '⚖️ Perfeito! Fundamentacao juridica impecavel!',
+  '🏛️ Nem o STF discordaria!',
   '📜 Conhecimento constitucional solido!',
   '🎯 Precisao juridica impressionante!',
-  'â­ Resposta digna de um constitucionalista!',
+  '⭐ Resposta digna de um constitucionalista!',
   '🔥 Voce domina o texto constitucional!',
   '💎 Interpretacao constitucional impecavel!',
 ];
 
 const WRONG_REACTIONS = [
-  '⚖ï¸ Quase! Veja o fundamento juridico.',
+  '⚖️ Quase! Veja o fundamento juridico.',
   '📖 Boa tentativa! Revise esse artigo.',
-  'ðŸ” Atencao ao texto constitucional.',
+  '🔍 Atencao ao texto constitucional.',
   '📚 Oportunidade de aprendizado!',
   '💡 A Constituicao surpreende as vezes.',
 ];
@@ -2616,7 +2616,7 @@ let answerStartTime = 0;
 
 function checkAntiGuess(answerTimeMs) {
   if (answerTimeMs < 1500 && state.phase === 'answering') {
-    return { penalty: true, multiplier: 0.5, msg: '⚠ï¸ Resposta muito rapida! Pontuacao reduzida pela metade.' };
+    return { penalty: true, multiplier: 0.5, msg: '⚠️ Resposta muito rapida! Pontuacao reduzida pela metade.' };
   }
   return { penalty: false, multiplier: 1 };
 }
@@ -2722,7 +2722,7 @@ function openSettings() {
   modal.className = 'modal-overlay';
   modal.innerHTML = '<div class="modal-content">' +
     '<button class="modal-close" onclick="closeSettings()">✕</button>' +
-    '<h2>⚙ï¸ Configuracoes</h2>' +
+    '<h2>⚙️ Configuracoes</h2>' +
 
     '<div class="setting-group"><label>Tema visual' +
     (isUnlocked('themes') ? '' : ' 🔒 (Nivel 3)') + '</label>' +
@@ -2796,10 +2796,10 @@ function checkEasterEggs() {
   if (!el) return;
 
   if (allOk === allTot && allTot >= 15) {
-    el.textContent = 'ðŸ›ï¸ "Voce e digno do Supremo. A Constituicao esta em boas maos." — Guardiao da Constituicao';
+    el.textContent = '🏛️ "Voce e digno do Supremo. A Constituicao esta em boas maos." — Guardiao da Constituicao';
     el.classList.remove('hidden');
   } else if (allOk === allTot && allTot >= 5) {
-    el.textContent = '⚖ï¸ "Interpretacao constitucional impecavel. Nem o STF discordaria."';
+    el.textContent = '⚖️ "Interpretacao constitucional impecavel. Nem o STF discordaria."';
     el.classList.remove('hidden');
   } else if (state.score >= 250) {
     el.textContent = '👑 "Poucos alcancam esse patamar. Voce honra a Constituicao."';
@@ -2863,9 +2863,9 @@ function stopSpeedrunTimer() {
 
 
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ══════════════════════════════════════════════════════════════════════
    V2 SYSTEMS – Lives, Fury, Golden, Boss, Particles, Skills, Coins, etc.
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+   ══════════════════════════════════════════════════════════════════════ */
 
 /* ── LIVES SYSTEM ──────────────────────────────────────────────────── */
 let lives = 3;
@@ -2942,7 +2942,7 @@ function showSuspense() {
     const el = document.getElementById('suspense-overlay');
     if (!el) { resolve(); return; }
     el.className = 'suspense-overlay';
-    el.innerHTML = '<div class="suspense-text">⚖ï¸ Processando resposta...</div>';
+    el.innerHTML = '<div class="suspense-text">⚖️ Processando resposta...</div>';
     setTimeout(() => { el.className = 'hidden'; resolve(); }, 700);
   });
 }
@@ -3065,7 +3065,7 @@ function showScoreExplosion(pts) {
 function initAnimatedBG() {
   const container = document.getElementById('bg-symbols');
   if (!container) return;
-  const symbols = ['⚖ï¸','📜','ðŸ›ï¸','📚','🔨','â­','🗽','📖','🎓','👨â€⚖ï¸','ðŸ†','🛡ï¸'];
+  const symbols = ['⚖️','📜','🏛️','📚','🔨','⭐','🗽','📖','🎓','👨‍⚖️','🏆','🛡️'];
   for (let i = 0; i < 15; i++) {
     const sym = document.createElement('div');
     sym.className = 'bg-sym';
@@ -3123,10 +3123,10 @@ function showEpicIntro() {
   return new Promise(resolve => {
     el.className = 'epic-intro';
     el.innerHTML =
-      '<div class="ei-icon">⚖ï¸</div>' +
+      '<div class="ei-icon">⚖️</div>' +
       '<div class="ei-title">Voce esta prestes a entrar na Arena Constitucional</div>' +
       '<div class="ei-sub">Defenda a Constituicao. Prove seu conhecimento juridico. Torne-se o Guardiao.</div>' +
-      '<button class="btn primary ei-btn" id="btn-enter-arena">Entrar na Arena ⚔ï¸</button>';
+      '<button class="btn primary ei-btn" id="btn-enter-arena">Entrar na Arena ⚔️</button>';
     document.getElementById('btn-enter-arena').addEventListener('click', () => {
       el.style.animation = 'fadeIn .3s ease reverse forwards';
       playSound('levelup');
@@ -3172,7 +3172,7 @@ const SKILLS = [
   {id:'fast', name:'Jurista Rapido', icon:'⚡', desc:'+10s extra em cada pergunta', cost:100, effect:'extraTime'},
   {id:'memory', name:'Memoria Fotografica', icon:'🧠', desc:'Elimina 1 alternativa automaticamente', cost:150, effect:'autoElim'},
   {id:'intuition', name:'Intuicao Juridica', icon:'💡', desc:'Dica automatica no inicio', cost:200, effect:'autoHint'},
-  {id:'shield', name:'Escudo Constitucional', icon:'🛡ï¸', desc:'+1 vida extra por partida', cost:250, effect:'extraLife'},
+  {id:'shield', name:'Escudo Constitucional', icon:'🛡️', desc:'+1 vida extra por partida', cost:250, effect:'extraLife'},
   {id:'double', name:'Dobro ou Nada', icon:'💰', desc:'Moedas em dobro por partida', cost:300, effect:'doubleCoins'},
   {id:'scholar', name:'Erudito', icon:'📚', desc:'+25% XP por partida', cost:350, effect:'bonusXP'},
 ];
@@ -3257,10 +3257,10 @@ function applySkillEffects() {
 /* ── CONSTITUTION MAP ──────────────────────────────────────────────── */
 const CONST_TOPICS = [
   {id:'teoria', name:'Teoria Constitucional', icon:'📜', levels:[1]},
-  {id:'individuais', name:'Direitos Individuais', icon:'🛡ï¸', levels:[2]},
-  {id:'remedios', name:'Remedios Constitucionais', icon:'⚖ï¸', levels:[3]},
-  {id:'sociais', name:'Direitos Sociais', icon:'ðŸ¤', levels:[4]},
-  {id:'praticos', name:'Casos Praticos', icon:'ðŸ›ï¸', levels:[5]},
+  {id:'individuais', name:'Direitos Individuais', icon:'🛡️', levels:[2]},
+  {id:'remedios', name:'Remedios Constitucionais', icon:'⚖️', levels:[3]},
+  {id:'sociais', name:'Direitos Sociais', icon:'🤝', levels:[4]},
+  {id:'praticos', name:'Casos Praticos', icon:'🏛️', levels:[5]},
 ];
 
 function renderConstitutionMap() {
@@ -3305,18 +3305,18 @@ function updateTopicStats(level, correct) {
 const NARRATOR_COMMENTS = {
   correct_easy: [
     '📖 O STF consolidou esse entendimento em diversas decisoes.',
-    '⚖ï¸ Essa e uma questao basilar do direito constitucional brasileiro.',
-    'ðŸ›ï¸ Importante fundamento para qualquer operador do direito.',
+    '⚖️ Essa e uma questao basilar do direito constitucional brasileiro.',
+    '🏛️ Importante fundamento para qualquer operador do direito.',
   ],
   correct_hard: [
     '🎓 Poucos dominam esse tema com tanta clareza. Parabens!',
-    '⚖ï¸ Esse e um tema complexo que exige profundo conhecimento constitucional.',
-    '👨â€⚖ï¸ O proprio STF ja debateu longamente essa questao.',
+    '⚖️ Esse e um tema complexo que exige profundo conhecimento constitucional.',
+    '👨‍⚖️ O proprio STF ja debateu longamente essa questao.',
   ],
   wrong: [
     '📚 Revise esse tema. E fundamental para o direito constitucional.',
     '💡 Esse artigo e frequentemente cobrado em concursos e provas.',
-    'ðŸ” Aprofunde-se nessa materia. A Constituicao tem nuances importantes.',
+    '🔍 Aprofunde-se nessa materia. A Constituicao tem nuances importantes.',
   ],
 };
 
@@ -3348,7 +3348,7 @@ function getDifficultyMultiplier(q) {
 
 /* ── STREAK MILESTONES ─────────────────────────────────────────────── */
 const STREAK_MILESTONES = [
-  {days:3, reward:'medal', desc:'ðŸ… Medalha de Consistencia!', coins:20},
+  {days:3, reward:'medal', desc:'🏅 Medalha de Consistencia!', coins:20},
   {days:5, reward:'avatar', desc:'🎭 Avatar especial desbloqueado!', coins:50},
   {days:7, reward:'theme', desc:'🎨 Tema exclusivo desbloqueado!', coins:100},
   {days:14, reward:'title', desc:'👑 Titulo "Constitucionalista Dedicado"!', coins:200},
@@ -3439,7 +3439,7 @@ function doFillAnswer(isCorrect, q) {
   const narr = getNarratorComment(isCorrect, q.diff || 'normal');
   const narrDiv = document.createElement('div');
   narrDiv.className = 'narrator-box';
-  narrDiv.innerHTML = '<span class="nr-icon">🎙ï¸</span>' + narr;
+  narrDiv.innerHTML = '<span class="nr-icon">🎙️</span>' + narr;
   ui.feedbackBox.appendChild(narrDiv);
 
   refreshMedals();
@@ -3498,7 +3498,7 @@ document.getElementById('btn-sound').textContent = profile.soundEnabled ? '🔊'
 </html>"""
 
 
-# â”€â”€ BACKEND â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── BACKEND ──────────────────────────────────────────────────────────────────
 
 def clean_entry(item: dict) -> dict:
     return {
@@ -3610,7 +3610,7 @@ def render_html() -> bytes:
     return html.encode("utf-8")
 
 
-# â”€â”€ HTTP HANDLER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── HTTP HANDLER ──────────────────────────────────────────────────────────────
 
 class QuizHandler(BaseHTTPRequestHandler):
     def send_bytes(self, body, ct, status=HTTPStatus.OK, cc=None):
@@ -3709,7 +3709,7 @@ class QuizHandler(BaseHTTPRequestHandler):
         pass
 
 
-# â”€â”€ SERVER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── SERVER ────────────────────────────────────────────────────────────────────
 
 def guess_ip() -> str:
     try:
