@@ -5,6 +5,8 @@ import json
 import os
 import socket
 import threading
+import time
+import uuid
 import urllib.request
 import urllib.error
 import urllib.parse
@@ -60,18 +62,388 @@ LEVELS = [
     {"id": 5, "name": "Casos Praticos",           "base": 22, "read": 20, "answer": 80},
 ]
 
+# ── INVESTIGATION MULTIPLAYER ─────────────────────────────────────────────────
+INVESTIGATION_ROOMS: dict = {}   # room_id -> room_state
+INV_LOCK = threading.Lock()
+
+INVESTIGATION_CASES = [
+  {"id":1,"title":"Print Vazado","historia":"Ana Clara, analista administrativa, teve uma conversa privada com uma colega vazada no grupo geral da empresa apos uma discussao interna sobre metas. O conteudo incluia criticas a gestao e comentarios pessoais sobre colegas.","envolvidos":["Ana Clara (vitima)","Juliana (colega)","Supervisor Marcos"],"evidencias":[{"id":"E1","titulo":"Print do grupo","descricao":"Mensagem enviada no grupo: 'Olha o que ela fala da empresa kkkkk' com o print da conversa privada","peso":0.8,"tipo":"digital"},{"id":"E2","titulo":"Conversa privada","descricao":"Historico da conversa: 'Nao concordo com a pressao absurda que estao colocando, isso e assedio mesmo'","peso":0.9,"tipo":"digital"},{"id":"E3","titulo":"Depoimento da vitima","descricao":"Ana Clara declarou: 'Eu nunca autorizei o envio disso para o grupo. Senti violacao total da minha privacidade'","peso":0.7,"tipo":"testemunhal"},{"id":"E4","titulo":"Politica interna","descricao":"Manual de conduta da empresa nao menciona restricoes sobre compartilhamento de conversas privadas","peso":0.3,"tipo":"documental"}],"duvidas":["Foi vazamento ou denuncia de interesse coletivo?","A empresa tem responsabilidade pelo ambiente que criou?"],"resposta":{"violacao":True,"direito":"Privacidade e Intimidade","artigo":"Art. 5º, X","culpado":"Juliana"}},
+  {"id":2,"title":"Demissao por Opiniao","historia":"Carlos, analista de marketing, foi demitido dois dias apos postar nas redes sociais criticas a um politico local que era parceiro comercial da empresa. O RH alegou 'desalinhamento institucional e conduta incompativel com os valores da organizacao'.","envolvidos":["Carlos (funcionario)","Empresa X","Diretor de RH"],"evidencias":[{"id":"E1","titulo":"Postagem de Carlos","descricao":"Post publico: 'Esse politico nao representa a populacao, suas politicas sao um desastre para a cidade'","peso":0.6,"tipo":"digital"},{"id":"E2","titulo":"Email de demissao","descricao":"Email do RH: 'Sua conduta publica nao condiz com os valores e alinhamento institucional da empresa'","peso":0.9,"tipo":"documental"},{"id":"E3","titulo":"Historico profissional","descricao":"Carlos tinha 4 anos de empresa com avaliacoes excelentes e nenhuma advertencia anterior","peso":0.7,"tipo":"documental"},{"id":"E4","titulo":"Contrato de trabalho","descricao":"Contrato nao possui clausula sobre manifestacoes politicas nas redes sociais pessoais","peso":0.8,"tipo":"documental"}],"duvidas":["Liberdade de expressao vs imagem corporativa","Demissao foi retaliacao ou justa causa?"],"resposta":{"violacao":True,"direito":"Liberdade de Expressao","artigo":"Art. 5º, IV","culpado":"Empresa X"}},
+  {"id":3,"title":"Revista Intima","historia":"Funcionarios de uma fabrica sao obrigados a levantar as roupas e se submeter a inspecao corporal ao sair do turno, como parte de uma politica anti-furto da empresa. Alguns funcionarios protestaram mas foram ameacados de demissao.","envolvidos":["Funcionarios","Empresa Y","Seguranca da empresa"],"evidencias":[{"id":"E1","titulo":"Norma interna","descricao":"Documento interno: 'Todos os funcionarios devem se submeter a revista corporal ao final de cada turno'","peso":0.9,"tipo":"documental"},{"id":"E2","titulo":"Relato coletivo","descricao":"Depoimento: 'Somos obrigados a mostrar o corpo, levantar roupas, e ainda somos filmados durante o processo'","peso":0.95,"tipo":"testemunhal"},{"id":"E3","titulo":"Indice de furtos","descricao":"Relatorio mostra queda de 40% em furtos apos implementacao da politica","peso":0.4,"tipo":"estatistico"},{"id":"E4","titulo":"Sindicato","descricao":"Sindicato registrou 47 queixas formais sobre o procedimento nos ultimos 6 meses","peso":0.7,"tipo":"documental"}],"duvidas":["Seguranca da empresa justifica tal medida?","Havia alternativas menos invasivas?"],"resposta":{"violacao":True,"direito":"Dignidade da Pessoa Humana","artigo":"Art. 5º, III","culpado":"Empresa Y"}},
+  {"id":4,"title":"Entrada sem Mandado","historia":"Policiais entraram em uma residencia as 22h sem mandado judicial, alegando 'fundada suspeita' de trafico de drogas. O morador, estudante universitario, foi algemado enquanto policiais revistaram toda a casa. Nada ilegal foi encontrado.","envolvidos":["Joao (morador)","Delegado Silva","Policiais da PM"],"evidencias":[{"id":"E1","titulo":"Video da entrada","descricao":"Filmagem da vizinha mostra policiais arrombando a porta sem apresentar qualquer documento","peso":0.95,"tipo":"digital"},{"id":"E2","titulo":"Relato do morador","descricao":"'Acordei com a porta sendo arrombada, fui algemado sem nenhuma explicacao, revistaram tudo'","peso":0.8,"tipo":"testemunhal"},{"id":"E3","titulo":"Boletim policial","descricao":"BO registra 'suspeita baseada em denuncia anonima'. Nenhum flagrante, nenhuma droga encontrada","peso":0.9,"tipo":"documental"},{"id":"E4","titulo":"Historico da rua","descricao":"Delegacia registra 3 ocorrencias na rua nos ultimos 30 dias","peso":0.2,"tipo":"estatistico"}],"duvidas":["Denuncia anonima justifica entrada forcada?","Havia situacao de flagrante?"],"resposta":{"violacao":True,"direito":"Inviolabilidade do Domicilio","artigo":"Art. 5º, XI","culpado":"Policiais da PM"}},
+  {"id":5,"title":"Discriminacao em Loja","historia":"Michael, jovem negro, foi impedido de entrar em uma loja de roupas de grife pelo seguranca, que alegou 'perfil inadequado ao publico da loja'. Outros clientes brancos com aparencia similar entraram sem problemas.","envolvidos":["Michael (cliente)","Gerente da loja","Seguranca Pedro"],"evidencias":[{"id":"E1","titulo":"Video de seguranca","descricao":"Cameras mostram Michael sendo barrado enquanto outros clientes com roupas similares entram livremente","peso":0.9,"tipo":"digital"},{"id":"E2","titulo":"Depoimento de testemunha","descricao":"Cliente que estava presente declarou: 'Vi claramente que ele foi tratado diferente dos outros clientes'","peso":0.8,"tipo":"testemunhal"},{"id":"E3","titulo":"Politica da loja","descricao":"Manual do funcionario fala em 'criterios subjetivos de acesso para preservar experiencia dos clientes'","peso":0.85,"tipo":"documental"},{"id":"E4","titulo":"Resposta da gerencia","descricao":"Gerente afirmou que 'seguranca agiu dentro dos protocolos da empresa'","peso":0.6,"tipo":"documental"}],"duvidas":["Era politica da empresa ou acao individual do seguranca?","Como provar intencao discriminatoria?"],"resposta":{"violacao":True,"direito":"Igualdade e Nao Discriminacao","artigo":"Art. 5º caput","culpado":"Gerente da loja"}},
+  {"id":6,"title":"Vazamento de Dados","historia":"Empresa de e-commerce vendeu base de dados com nome, CPF, endereco e historico de compras de 2 milhoes de clientes para parceiros de marketing sem consentimento previo. Clientes passaram a receber ligacoes e emails nao solicitados.","envolvidos":["TechShop (empresa)","CEO Ricardo","Clientes afetados"],"evidencias":[{"id":"E1","titulo":"Planilha vazada","descricao":"Arquivo com dados de clientes encontrado em servidor de empresa parceira sem qualquer criptografia","peso":0.95,"tipo":"digital"},{"id":"E2","titulo":"Email interno","descricao":"Email do CEO para diretor comercial: 'Vamos monetizar nossa base. Os dados valem ouro no mercado'","peso":0.9,"tipo":"digital"},{"id":"E3","titulo":"Termos de uso","descricao":"Termos de uso do site nao previam compartilhamento de dados com terceiros para fins comerciais","peso":0.85,"tipo":"documental"},{"id":"E4","titulo":"Reclamacoes","descricao":"4.847 reclamacoes formais de clientes sobre contato nao autorizado registradas em 30 dias","peso":0.7,"tipo":"estatistico"}],"duvidas":["Termos de uso permitem algum uso dos dados?","Qual o limite do uso comercial de dados pessoais?"],"resposta":{"violacao":True,"direito":"Privacidade e Protecao de Dados","artigo":"Art. 5º, X","culpado":"CEO Ricardo"}},
+  {"id":7,"title":"Sem Direito de Defesa","historia":"Fernando foi demitido por justa causa acusado de fraude sem que lhe fosse dada qualquer oportunidade de apresentar sua versao dos fatos. A empresa conduziu investigacao interna secreta e anunciou a demissao em reuniao de 5 minutos.","envolvidos":["Fernando (funcionario)","RH da empresa","Diretor financeiro"],"evidencias":[{"id":"E1","titulo":"Ata da reuniao","descricao":"Ata de apenas 5 minutos registra: 'Comunicado de demissao por justa causa. Reuniao encerrada'","peso":0.9,"tipo":"documental"},{"id":"E2","titulo":"Processo interno","descricao":"Empresa realizou investigacao de 3 semanas sem notificar Fernando nem dar chance de contraditorio","peso":0.95,"tipo":"documental"},{"id":"E3","titulo":"Depoimento de Fernando","descricao":"'Nunca fui chamado para dar minha versao. Soube da acusacao e da demissao ao mesmo tempo'","peso":0.8,"tipo":"testemunhal"},{"id":"E4","titulo":"Regulamento interno","descricao":"Regulamento prevê proceso disciplinar mas nao especifica direito de defesa do funcionario","peso":0.6,"tipo":"documental"}],"duvidas":["Processo interno de empresa exige contraditorio?","A falta de defesa invalida a justa causa?"],"resposta":{"violacao":True,"direito":"Contraditorio e Ampla Defesa","artigo":"Art. 5º, LV","culpado":"Empresa"}},
+  {"id":8,"title":"Censura de Materia","historia":"A Prefeitura de uma cidade obteve liminar judicial para impedir que o jornal local publicasse reportagem sobre contratos suspeitos entre a gestao municipal e empresas de fachada. O editor-chefe foi intimado a destruir todos os materiais.","envolvidos":["Jornal Verdade","Prefeito Sousa","Juiz que concedeu liminar"],"evidencias":[{"id":"E1","titulo":"Liminar judicial","descricao":"Liminar proibe 'sob pena de multa diaria de R$ 50.000 a publicacao de qualquer materia sobre contratos municipais'","peso":0.9,"tipo":"documental"},{"id":"E2","titulo":"Materia pronta","descricao":"Reportagem documentada com notas fiscais, contratos e evidencias de sobrepreco de 340% em obras","peso":0.85,"tipo":"documental"},{"id":"E3","titulo":"Depoimento do editor","descricao":"'Fomos impedidos de publicar materia de interesse publico. Isso e censura pura e simples'","peso":0.8,"tipo":"testemunhal"},{"id":"E4","titulo":"Argumento da prefeitura","descricao":"Advogado da prefeitura alega que publicacao causaria 'dano irreparavel a imagem do gestor publico'","peso":0.5,"tipo":"documental"}],"duvidas":["Protecao de imagem justifica censura previa?","Interesse publico supera direito de imagem?"],"resposta":{"violacao":True,"direito":"Liberdade de Imprensa","artigo":"Art. 5º, IX","culpado":"Prefeito Sousa"}},
+]
+
+INVESTIGATION_ROLES = [
+  {"id":"icaro","nome":"Icaro Specter","titulo":"Advogado da Defesa","icon":"⚖️","cor":"#3b82f6","desc":"Mestre da narrativa. Contesta evidencias e cria duvida nos demais jogadores.","habilidades":{"contestacao":{"nome":"Contestacao Juridica","cd":25,"desc":"Reduz peso de uma evidencia em 40%"},"tese":{"nome":"Construcao de Tese","cd":40,"desc":"Cria linha de defesa que sugere ausencia de violacao"},"duvida":{"nome":"Duvida Razoavel","cd":9999,"uses":1,"desc":"Remove 1 evidencia do julgamento final (uso unico)"},"reversao":{"nome":"Reversao de Narrativa","cd":9999,"uses":1,"desc":"Troca suspeita entre dois envolvidos (ultimate)"}}},
+  {"id":"natan","nome":"Natan Ross","titulo":"Promotor","icon":"🔥","cor":"#ef4444","desc":"Acusacao implacavel. Marca evidencias criticas e eleva seu impacto.","habilidades":{"marcar":{"nome":"Evidencia Critica","cd":20,"desc":"Aumenta peso de uma evidencia em 50%"},"acusar":{"nome":"Acusacao Formal","cd":35,"desc":"Bloqueia tentativa de contestacao do advogado por 30s"}}},
+  {"id":"luciano","nome":"Luciano Hardman","titulo":"Delegado","icon":"🕵️","cor":"#f59e0b","desc":"Investigador nato. Desvenda evidencias ocultas que outros nao encontram.","habilidades":{"desbloquear":{"nome":"Investigacao Profunda","cd":45,"desc":"Revela evidencia oculta do caso"},"cruzar":{"nome":"Cruzamento de Dados","cd":30,"desc":"Mostra conexao entre duas evidencias"}}},
+  {"id":"giovanna","nome":"Giovanna Pearson","titulo":"Juiza","icon":"👩‍⚖️","cor":"#8b5cf6","desc":"Seu voto vale dobrado. Pode ver tendencia dos votos dos outros.","habilidades":{"ver":{"nome":"Leitura do Juri","cd":30,"desc":"Revela tendencia de votos dos outros jogadores"},"peso":{"nome":"Voto Qualificado","cd":9999,"uses":1,"desc":"Seu proximo voto vale 2x (uso unico)"}}},
+  {"id":"thalles","nome":"Thalles Litt","titulo":"Pregoeiro","icon":"📊","cor":"#10b981","desc":"Especialista em falhas administrativas e processuais.","habilidades":{"falha":{"nome":"Falha Processual","cd":35,"desc":"Revela falha administrativa no caso que pode mudar o desfecho"},"anular":{"nome":"Nulidade","cd":50,"desc":"Questiona a validade de uma evidencia por vicio formal"}}},
+  {"id":"izabella","nome":"Izabella Zane","titulo":"Consultora Juridica","icon":"📚","cor":"#ec4899","desc":"Sugere artigos e fundamenta teorias. Ajuda o time a acertar.","habilidades":{"sugerir":{"nome":"Fundamentacao","cd":20,"desc":"Sugere 2 artigos constitucionais possiveis para o caso"},"analisar":{"nome":"Analise de Risco","cd":30,"desc":"Mostra probabilidade de acerto de cada opcao de voto"}}},
+  {"id":"dilerman","nome":"Dilerman Forstman","titulo":"Procurador","icon":"🏛️","cor":"#f97316","desc":"Analisa impacto coletivo. Pode anular acusacoes fracas.","habilidades":{"impacto":{"nome":"Impacto Coletivo","cd":25,"desc":"Mostra quantas pessoas seriam afetadas pela decisao"},"anular_fraca":{"nome":"Anular Acusacao Fraca","cd":9999,"uses":1,"desc":"Se provas sao insuficientes, pode anular acusacao (ultimate)"}}},
+]
+
+PHASE_DURATIONS = {
+    "lobby": 999,
+    "intro": 45,
+    "investigacao": 180,
+    "debate": 90,
+    "votacao": 45,
+    "resultado": 999,
+}
+
+def _gen_room_id():
+    return str(uuid.uuid4())[:8].upper()
+
+def _make_room(creator_id: str, creator_name: str) -> dict:
+    room_id = _gen_room_id()
+    case = INVESTIGATION_CASES[int(time.time()) % len(INVESTIGATION_CASES)]
+    return {
+        "id": room_id,
+        "phase": "lobby",
+        "phase_start": time.time(),
+        "case": case,
+        "players": [{
+            "id": creator_id,
+            "name": creator_name,
+            "role": None,
+            "score": 0,
+            "ready": False,
+            "vote": None,
+            "actions_used": [],
+            "joined_at": time.time(),
+        }],
+        "evidence_weights": {e["id"]: e["peso"] for e in case["evidencias"]},
+        "hidden_evidence": None,
+        "contested": [],
+        "critical": [],
+        "removed_evidences": [],
+        "shifted_suspect": {},
+        "messages": [],
+        "actions_log": [],
+        "resultado": None,
+        "created_at": time.time(),
+        "last_action": time.time(),
+    }
+
+def _assign_roles(room: dict):
+    import random
+    roles = INVESTIGATION_ROLES[:]
+    random.shuffle(roles)
+    for i, p in enumerate(room["players"]):
+        p["role"] = roles[i % len(roles)]["id"]
+
+def _advance_phase(room: dict):
+    phases = ["lobby", "intro", "investigacao", "debate", "votacao", "resultado"]
+    cur = room["phase"]
+    if cur == "resultado":
+        return
+    idx = phases.index(cur) if cur in phases else 0
+    nxt = phases[min(idx + 1, len(phases) - 1)]
+    room["phase"] = nxt
+    room["phase_start"] = time.time()
+    if nxt == "investigacao":
+        _assign_roles(room)
+        _add_hidden_evidence(room)
+    if nxt == "resultado":
+        _calc_resultado(room)
+
+def _add_hidden_evidence(room: dict):
+    # Add a hidden bonus evidence (unlockable by Delegado)
+    room["hidden_evidence"] = {"id":"EH","titulo":"Evidencia Oculta","descricao":"Documento confidencial que pode mudar tudo — apenas o Delegado pode revelar","peso":0.7,"tipo":"oculta","revealed":False}
+
+def _calc_resultado(room: dict):
+    case = room["case"]
+    correct = case["resposta"]
+    results = []
+    for p in room["players"]:
+        v = p.get("vote") or {}
+        pts = 0
+        details = []
+        if v.get("violacao") == correct["violacao"]:
+            pts += 20; details.append("✅ Violacao: +20")
+        else:
+            details.append("❌ Violacao: 0")
+        if v.get("artigo") and v.get("artigo","").strip().lower() in correct["artigo"].lower():
+            pts += 50; details.append("✅ Artigo: +50")
+        else:
+            details.append(f"❌ Artigo correto: {correct['artigo']}")
+        if v.get("culpado","").strip().lower() in correct["culpado"].lower():
+            pts += 30; details.append("✅ Culpado: +30")
+        else:
+            details.append(f"❌ Culpado: {correct['culpado']}")
+        # role bonus
+        role_obj = next((r for r in INVESTIGATION_ROLES if r["id"]==p.get("role")), None)
+        if p.get("role") == "giovanna":
+            pts_before = pts
+            vote_weight = p.get("vote_weight", 1)
+            pts = int(pts * vote_weight)
+            if vote_weight > 1:
+                details.append(f"⚖️ Voto qualificado x{vote_weight}")
+        p["score"] = pts
+        p["result_details"] = details
+        results.append({"id":p["id"],"name":p["name"],"score":pts,"details":details,"role":p.get("role"),"vote":v})
+    results.sort(key=lambda x: -x["score"])
+    room["resultado"] = {
+        "rankings": results,
+        "resposta_correta": correct,
+        "case_title": case["title"],
+    }
+
+def _tick_rooms():
+    """Background thread: advance phases by time."""
+    while True:
+        time.sleep(3)
+        with INV_LOCK:
+            now = time.time()
+            dead = []
+            for rid, room in INVESTIGATION_ROOMS.items():
+                # Remove empty/stale rooms
+                if now - room.get("last_action", now) > 3600:
+                    dead.append(rid)
+                    continue
+                phase = room["phase"]
+                if phase in ("lobby","resultado"):
+                    continue
+                dur = PHASE_DURATIONS.get(phase, 60)
+                elapsed = now - room["phase_start"]
+                if elapsed >= dur:
+                    _advance_phase(room)
+                    room["last_action"] = now
+            for rid in dead:
+                del INVESTIGATION_ROOMS[rid]
+
+# Start background phase ticker
+_ticker_thread = threading.Thread(target=_tick_rooms, daemon=True)
+_ticker_thread.start()
+
+def inv_join_or_create(player_id: str, player_name: str, room_id: str = "") -> dict:
+    with INV_LOCK:
+        # Try joining existing room
+        if room_id and room_id in INVESTIGATION_ROOMS:
+            room = INVESTIGATION_ROOMS[room_id]
+            if room["phase"] == "lobby" and len(room["players"]) < 7:
+                # Check not already in
+                if not any(p["id"] == player_id for p in room["players"]):
+                    room["players"].append({
+                        "id": player_id, "name": player_name,
+                        "role": None, "score": 0, "ready": False,
+                        "vote": None, "actions_used": [], "joined_at": time.time(),
+                    })
+                room["last_action"] = time.time()
+                return {"room_id": room_id, "created": False}
+        # Create new room
+        room = _make_room(player_id, player_name)
+        INVESTIGATION_ROOMS[room["id"]] = room
+        return {"room_id": room["id"], "created": True}
+
+def inv_list_rooms() -> list:
+    with INV_LOCK:
+        out = []
+        for rid, room in INVESTIGATION_ROOMS.items():
+            if room["phase"] == "lobby":
+                out.append({"id": rid, "players": len(room["players"]), "case": room["case"]["title"]})
+        return out
+
+def inv_get_state(room_id: str, player_id: str) -> dict | None:
+    with INV_LOCK:
+        room = INVESTIGATION_ROOMS.get(room_id)
+        if not room:
+            return None
+        now = time.time()
+        phase = room["phase"]
+        dur = PHASE_DURATIONS.get(phase, 60)
+        elapsed = now - room["phase_start"]
+        time_left = max(0, dur - elapsed) if phase not in ("lobby","resultado") else None
+        # Build player list (sanitized)
+        players_out = []
+        for p in room["players"]:
+            role_obj = next((r for r in INVESTIGATION_ROLES if r["id"]==p.get("role")), None)
+            players_out.append({
+                "id": p["id"],
+                "name": p["name"],
+                "role_id": p.get("role"),
+                "role_name": role_obj["nome"] if role_obj else None,
+                "role_icon": role_obj["icon"] if role_obj else None,
+                "score": p.get("score", 0),
+                "ready": p.get("ready", False),
+                "has_voted": p.get("vote") is not None,
+                "actions_used": p.get("actions_used", []),
+            })
+        # Build evidences for this phase
+        evidences = []
+        for e in room["case"]["evidencias"]:
+            eid = e["id"]
+            if eid in room.get("removed_evidences", []):
+                continue
+            w = room["evidence_weights"].get(eid, e["peso"])
+            evidences.append({**e, "peso": round(w, 2),
+                "contested": eid in room.get("contested", []),
+                "critical": eid in room.get("critical", [])})
+        # Hidden evidence
+        hidden = room.get("hidden_evidence")
+        if hidden and hidden.get("revealed"):
+            evidences.append(hidden)
+        # My role
+        me = next((p for p in room["players"] if p["id"] == player_id), None)
+        my_role = None
+        if me and me.get("role"):
+            my_role = next((r for r in INVESTIGATION_ROLES if r["id"]==me["role"]), None)
+        # Tendency (only for Giovanna)
+        tendency = None
+        if me and me.get("role") == "giovanna" and "ver" in me.get("actions_used", []):
+            votes = [p.get("vote",{}).get("violacao") for p in room["players"] if p.get("vote")]
+            if votes:
+                sim = votes.count(True); nao = votes.count(False)
+                tendency = {"sim": sim, "nao": nao}
+        return {
+            "room_id": room_id,
+            "phase": phase,
+            "time_left": round(time_left) if time_left is not None else None,
+            "players": players_out,
+            "case": {
+                "id": room["case"]["id"],
+                "title": room["case"]["title"],
+                "historia": room["case"]["historia"],
+                "envolvidos": room["case"]["envolvidos"],
+                "duvidas": room["case"]["duvidas"],
+            },
+            "evidences": evidences if phase not in ("lobby","intro") else [],
+            "messages": room.get("messages", [])[-30:],
+            "actions_log": room.get("actions_log", [])[-10:],
+            "resultado": room.get("resultado"),
+            "my_role": my_role,
+            "tendency": tendency,
+            "shifted_suspect": room.get("shifted_suspect", {}),
+        }
+
+def inv_action(room_id: str, player_id: str, action: str, target: str = "") -> dict:
+    with INV_LOCK:
+        room = INVESTIGATION_ROOMS.get(room_id)
+        if not room:
+            return {"ok": False, "msg": "Sala nao encontrada"}
+        me = next((p for p in room["players"] if p["id"] == player_id), None)
+        if not me:
+            return {"ok": False, "msg": "Jogador nao encontrado"}
+        if room["phase"] not in ("investigacao", "debate"):
+            return {"ok": False, "msg": "Fase incorreta para acoes"}
+        used = me.get("actions_used", [])
+        role = me.get("role")
+        role_obj = next((r for r in INVESTIGATION_ROLES if r["id"] == role), None)
+        if not role_obj:
+            return {"ok": False, "msg": "Sem role"}
+        hab = role_obj["habilidades"].get(action)
+        if not hab:
+            return {"ok": False, "msg": "Habilidade invalida"}
+        if hab.get("uses") == 1 and action in used:
+            return {"ok": False, "msg": "Uso unico ja utilizado"}
+        msg_action = ""
+        # Execute action
+        if action == "contestacao" and target:
+            w = room["evidence_weights"].get(target, 0.5)
+            room["evidence_weights"][target] = round(w * 0.6, 2)
+            if target not in room["contested"]:
+                room["contested"].append(target)
+            msg_action = f"⚖️ {me['name']} contestou evidencia {target}"
+        elif action == "marcar" and target:
+            w = room["evidence_weights"].get(target, 0.5)
+            room["evidence_weights"][target] = min(1.0, round(w * 1.5, 2))
+            if target not in room["critical"]:
+                room["critical"].append(target)
+            msg_action = f"🔥 {me['name']} marcou evidencia {target} como CRITICA"
+        elif action == "desbloquear":
+            h = room.get("hidden_evidence")
+            if h:
+                h["revealed"] = True
+                msg_action = f"🕵️ {me['name']} revelou evidencia oculta!"
+        elif action == "duvida" and target:
+            if target not in room.get("removed_evidences", []):
+                room.setdefault("removed_evidences", []).append(target)
+            msg_action = f"❓ {me['name']} usou Duvida Razoavel — evidencia {target} removida!"
+        elif action == "reversao":
+            suspects = room["case"]["envolvidos"]
+            if len(suspects) >= 2:
+                room["shifted_suspect"] = {"de": suspects[0], "para": suspects[1], "ativo": True}
+            msg_action = f"🔄 {me['name']} ativou Reversao de Narrativa!"
+        elif action == "ver":
+            msg_action = f"👁️ {me['name']} analisou a tendencia dos votos"
+        elif action == "peso":
+            me["vote_weight"] = 2
+            msg_action = f"⚖️ {me['name']} ativou Voto Qualificado!"
+        elif action == "acusar":
+            msg_action = f"🔥 {me['name']} emitiu Acusacao Formal!"
+        elif action == "sugerir":
+            msg_action = f"📚 {me['name']} solicitou fundamentacao juridica"
+        elif action == "impacto":
+            msg_action = f"🏛️ {me['name']} analisou impacto coletivo do caso"
+        elif action == "falha":
+            msg_action = f"📊 {me['name']} identificou falha processual!"
+        elif action == "ready":
+            me["ready"] = True
+            msg_action = f"✅ {me['name']} esta pronto"
+            # Start game if all ready
+            if all(p.get("ready") for p in room["players"]) and len(room["players"]) >= 2:
+                _advance_phase(room)
+        else:
+            if not msg_action:
+                msg_action = f"⚡ {me['name']} usou {hab['nome']}"
+        me.setdefault("actions_used", []).append(action)
+        room.setdefault("actions_log", []).append({"ts": time.time(), "msg": msg_action})
+        room["last_action"] = time.time()
+        return {"ok": True, "msg": msg_action}
+
+def inv_vote(room_id: str, player_id: str, vote: dict) -> dict:
+    with INV_LOCK:
+        room = INVESTIGATION_ROOMS.get(room_id)
+        if not room:
+            return {"ok": False, "msg": "Sala nao encontrada"}
+        if room["phase"] != "votacao":
+            return {"ok": False, "msg": "Nao e fase de votacao"}
+        me = next((p for p in room["players"] if p["id"] == player_id), None)
+        if not me:
+            return {"ok": False, "msg": "Jogador nao encontrado"}
+        me["vote"] = vote
+        room["last_action"] = time.time()
+        # Auto-advance if all voted
+        if all(p.get("vote") is not None for p in room["players"]):
+            _advance_phase(room)
+        return {"ok": True}
+
+def inv_chat(room_id: str, player_id: str, msg_text: str) -> dict:
+    with INV_LOCK:
+        room = INVESTIGATION_ROOMS.get(room_id)
+        if not room:
+            return {"ok": False}
+        me = next((p for p in room["players"] if p["id"] == player_id), None)
+        if not me:
+            return {"ok": False}
+        room.setdefault("messages", []).append({
+            "ts": time.time(),
+            "player": me["name"],
+            "text": str(msg_text)[:200],
+            "role": me.get("role"),
+        })
+        room["last_action"] = time.time()
+        return {"ok": True}
+
+# ── END INVESTIGATION MULTIPLAYER ─────────────────────────────────────────────
+
 QUESTIONS = [
-    # ── NIVEL 1 ────────────────────────────────────────────────────────────────
-    {"level":1,"q":"O Art. 5, paragrafo 1, da Constituicao de 1988 estabelece que as normas definidoras dos direitos e garantias fundamentais possuem:","o":["Aplicacao imediata","Aplicacao condicionada a lei complementar","Aplicacao apenas subsidiaria","Aplicacao restrita ao Judiciario"],"a":0,"hint":"A Constituicao quis maximizar a eficacia dos direitos fundamentais.","ref":"Art. 5, §1","note":"As normas definidoras dos direitos e garantias fundamentais tem aplicacao imediata.","exp":"O dispositivo afasta a ideia de que direitos fundamentais dependem sempre de regulamentacao para produzir efeitos."},
-    {"level":1,"q":"Tratados e convencoes internacionais sobre direitos humanos aprovados em cada Casa do Congresso, em dois turnos, por tres quintos dos votos, equivalem a:","o":["Lei ordinaria federal","Lei complementar federal","Emenda constitucional","Decreto autonomo"],"a":2,"hint":"A Constituicao criou um procedimento reforcado para certos tratados de direitos humanos.","ref":"Art. 5, §3","note":"O texto constitucional equipara esses tratados a emendas constitucionais.","exp":"Nao basta tratar de direitos humanos; o tratado precisa cumprir o rito qualificado previsto na propria Constituicao."},
-    {"level":1,"q":"O Art. 5, paragrafo 2, indica que os direitos e garantias expressos na Constituicao:","o":["Formam rol taxativo e exaustivo","Excluem direitos oriundos de tratados","Nao excluem outros decorrentes do regime, dos principios e dos tratados adotados pelo Brasil","Dependem de lei para serem reconhecidos"],"a":2,"hint":"O sistema constitucional brasileiro e materialmente aberto.","ref":"Art. 5, §2","note":"O rol de direitos fundamentais nao e fechado nem puramente enumerativo.","exp":"A Constituicao admite direitos materialmente fundamentais fora do texto literal do caput e dos incisos do Art. 5."},
-    {"level":1,"q":"Qual materia e protegida como clausula petrea pelo Art. 60, paragrafo 4?","o":["Direitos e garantias individuais","Plano plurianual","Competencia residual dos municipios","Estrutura administrativa de ministerios"],"a":0,"hint":"A resposta protege o nucleo duro do constitucionalismo liberal-democratico.","ref":"Art. 60, §4","note":"Direitos e garantias individuais nao podem ser abolidos sequer por emenda.","exp":"A Constituicao impede reformas que ataquem o nucleo essencial de direitos e garantias, protegendo a ordem constitucional contra autodestruicao."},
+    # â”€â”€ NIVEL 1 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    {"level":1,"q":"O Art. 5, paragrafo 1, da Constituicao de 1988 estabelece que as normas definidoras dos direitos e garantias fundamentais possuem:","o":["Aplicacao imediata","Aplicacao condicionada a lei complementar","Aplicacao apenas subsidiaria","Aplicacao restrita ao Judiciario"],"a":0,"hint":"A Constituicao quis maximizar a eficacia dos direitos fundamentais.","ref":"Art. 5, Â§1","note":"As normas definidoras dos direitos e garantias fundamentais tem aplicacao imediata.","exp":"O dispositivo afasta a ideia de que direitos fundamentais dependem sempre de regulamentacao para produzir efeitos."},
+    {"level":1,"q":"Tratados e convencoes internacionais sobre direitos humanos aprovados em cada Casa do Congresso, em dois turnos, por tres quintos dos votos, equivalem a:","o":["Lei ordinaria federal","Lei complementar federal","Emenda constitucional","Decreto autonomo"],"a":2,"hint":"A Constituicao criou um procedimento reforcado para certos tratados de direitos humanos.","ref":"Art. 5, Â§3","note":"O texto constitucional equipara esses tratados a emendas constitucionais.","exp":"Nao basta tratar de direitos humanos; o tratado precisa cumprir o rito qualificado previsto na propria Constituicao."},
+    {"level":1,"q":"O Art. 5, paragrafo 2, indica que os direitos e garantias expressos na Constituicao:","o":["Formam rol taxativo e exaustivo","Excluem direitos oriundos de tratados","Nao excluem outros decorrentes do regime, dos principios e dos tratados adotados pelo Brasil","Dependem de lei para serem reconhecidos"],"a":2,"hint":"O sistema constitucional brasileiro e materialmente aberto.","ref":"Art. 5, Â§2","note":"O rol de direitos fundamentais nao e fechado nem puramente enumerativo.","exp":"A Constituicao admite direitos materialmente fundamentais fora do texto literal do caput e dos incisos do Art. 5."},
+    {"level":1,"q":"Qual materia e protegida como clausula petrea pelo Art. 60, paragrafo 4?","o":["Direitos e garantias individuais","Plano plurianual","Competencia residual dos municipios","Estrutura administrativa de ministerios"],"a":0,"hint":"A resposta protege o nucleo duro do constitucionalismo liberal-democratico.","ref":"Art. 60, Â§4","note":"Direitos e garantias individuais nao podem ser abolidos sequer por emenda.","exp":"A Constituicao impede reformas que ataquem o nucleo essencial de direitos e garantias, protegendo a ordem constitucional contra autodestruicao."},
     {"level":1,"q":"A afirmacao de que todo poder emana do povo e por ele sera exercido diretamente ou por representantes eleitos traduz qual vetor constitucional?","o":["Soberania popular","Separacao rigida de poderes","Legalidade estrita tributaria","Federalismo cooperativo"],"a":0,"hint":"A regra conecta legitimidade do poder e democracia.","ref":"Art. 1, paragrafo unico","note":"A origem do poder politico e popular, e nao burocratica.","exp":"O dispositivo funda o Estado Democratico de Direito em uma base de legitimidade popular."},
     {"level":1,"q":"No plano dogmatico, a afirmacao correta sobre direitos fundamentais e:","o":["Sao absolutos em qualquer colisao","Tem eficacia apenas nas relacoes Estado-individuo","Podem irradiar efeitos tambem nas relacoes privadas","Valem apenas para brasileiros natos"],"a":2,"hint":"Pense na eficacia horizontal dos direitos fundamentais.","ref":"Art. 5 e teoria da eficacia horizontal","note":"A protecao dos direitos fundamentais pode repercutir tambem em relacoes entre particulares.","exp":"A leitura contemporanea da Constituicao reconhece que direitos fundamentais tambem condicionam relacoes privadas em maior ou menor grau."},
     {"level":1,"q":"A leitura contemporanea do principio da igualdade autoriza concluir que:","o":["A Constituicao so admite igualdade formal","Tratamentos desiguais sao sempre inconstitucionais","A igualdade pode justificar diferenciacoes normativas quando fundadas em criterio constitucionalmente legitimo","A igualdade impede qualquer politica publica de inclusao"],"a":2,"hint":"A igualdade material busca reduzir assimetrias injustificadas.","ref":"Art. 5, caput","note":"A igualdade constitucional nao se reduz a uniformidade cega.","exp":"A isonomia constitucional permite diferenciacoes justificadas para promover equilibrio e impedir discriminacoes arbitrarias."},
     {"level":1,"q":"Segundo a doutrina e a jurisprudencia do STF, direitos fundamentais podem ser restringidos por lei desde que:","o":["A restricao seja total e definitiva","Preservem o nucleo essencial e respeitem a proporcionalidade","O Executivo concorde com a restricao","A restricao abranja apenas estrangeiros"],"a":1,"hint":"Ha um limite que nem o legislador pode ultrapassar.","ref":"Art. 5 e teoria do nucleo essencial","note":"A restricao legislativa de direito fundamental deve respeitar o nucleo essencial e o principio da proporcionalidade.","exp":"O STF consagrou que leis que esvaziem por completo o conteudo de um direito fundamental sao inconstitucionais por violacao ao seu nucleo essencial."},
     {"level":1,"q":"A dignidade da pessoa humana na Constituicao de 1988 esta posicionada como:","o":["Direito subjetivo passivel de ponderacao ordinaria","Fundamento da Republica Federativa do Brasil","Principio administrativo restrito ao funcionalismo publico","Norma programatica sem eficacia juridica propria"],"a":1,"hint":"Observe onde a Constituicao posiciona esse valor: no titulo sobre os fundamentos.","ref":"Art. 1, III","note":"A dignidade da pessoa humana e fundamento da Republica, com densidade normativa propria.","exp":"Ao ser erigida como fundamento, a dignidade deixa de ser apenas diretriz e passa a condicionar toda a ordem juridica."},
-    # ── NIVEL 2 ────────────────────────────────────────────────────────────────
+    # â”€â”€ NIVEL 2 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     {"level":2,"q":"Qual afirmacao esta de acordo com a liberdade de manifestacao do pensamento na Constituicao de 1988?","o":["E livre, mas o anonimato e vedado","Depende de licenca administrativa","Admite censura previa em contexto politico sensivel","So protege opinioes favoraveis a ordem constitucional"],"a":0,"hint":"A Constituicao protege a liberdade, mas exige responsabilidade.","ref":"Art. 5, IV","note":"A manifestacao do pensamento e livre, vedado o anonimato.","exp":"A vedacao ao anonimato busca permitir responsabilizacao posterior, sem abrir espaco para censura previa."},
     {"level":2,"q":"A dissolucao compulsoria de associacao civil somente pode ocorrer:","o":["Por ato do Poder Executivo em caso de interesse publico","Por decisao judicial com transito em julgado","Por deliberacao do Ministerio Publico","Por decreto legislativo simples"],"a":1,"hint":"A Constituicao protege fortemente a liberdade associativa.","ref":"Art. 5, XIX","note":"A dissolucao compulsoria depende de decisao judicial transitada em julgado.","exp":"A ordem constitucional nao admite que o Executivo desconstitua associacoes por mera conveniencia politica ou administrativa."},
     {"level":2,"q":"Quanto a inviolabilidade de domicilio, a regra correta e:","o":["A ordem judicial autoriza ingresso forcado a qualquer hora","A entrada e sempre livre em investigacao criminal","A casa e asilo inviolavel, salvo flagrante, desastre, socorro, ou ordem judicial durante o dia","A policia pode ingressar a noite com autorizacao verbal de delegado"],"a":2,"hint":"A excecao da ordem judicial tem limitacao temporal expressa.","ref":"Art. 5, XI","note":"A ordem judicial nao autoriza, por si so, ingresso noturno.","exp":"O texto constitucional foi preciso ao limitar a execucao de ordem judicial ao periodo diurno, salvo outras hipoteses constitucionais."},
@@ -81,7 +453,7 @@ QUESTIONS = [
     {"level":2,"q":"Quanto a liberdade de associacao, a alternativa correta e:","o":["A criacao de associacoes depende de autorizacao estatal","E plena a liberdade de associacao para fins licitos, vedada a de carater paramilitar","Associacoes podem ser dissolvidas por ato do prefeito","A liberdade associativa nao alcanca entidades sindicais"],"a":1,"hint":"A Constituicao dispensa autorizacao, mas nao tolera fins ilicitos ou carater paramilitar.","ref":"Art. 5, XVII e XVIII","note":"Associacoes licitas independem de autorizacao e o Estado nao pode interferir em seu funcionamento, salvo limites constitucionais.","exp":"O texto constitucional protege a autonomia associativa, mas exclui fins ilicitos e estruturas paramilitares."},
     {"level":2,"q":"A liberdade de crenca e culto religioso na Constituicao implica:","o":["Apenas tolerancia passiva do Estado","Livre exercicio dos cultos religiosos e protecao aos locais de culto e liturgias","Financiamento obrigatorio de toda religiao pelo Estado","Proibicao de simbolos religiosos em espacos publicos"],"a":1,"hint":"A liberdade religiosa tem dimensao positiva e negativa.","ref":"Art. 5, VI","note":"O livre exercicio dos cultos religiosos e garantido, e o Estado deve proteger os locais de culto e suas liturgias.","exp":"A Constituicao nao se limita a tolerar religiao; ela garante o exercicio ativo e protege os espacos de culto."},
     {"level":2,"q":"O direito de propriedade na Constituicao de 1988 esta condicionado a:","o":["Uso exclusivo do titular, sem restricoes","Atendimento de sua funcao social","Autorizacao anual do Municipio","Registro obrigatorio em cartorio para todos os bens"],"a":1,"hint":"A Constituicao nao reconhece propriedade como direito absoluto e desvinculado de responsabilidade social.","ref":"Art. 5, XXIII","note":"A propriedade atendera sua funcao social.","exp":"A funcao social e condicao intrinseca do exercicio do direito de propriedade, nao mera restricao externa."},
-    # ── NIVEL 3 ────────────────────────────────────────────────────────────────
+    # â”€â”€ NIVEL 3 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     {"level":3,"q":"No mandado de seguranca coletivo, possuem legitimidade ativa, entre outros:","o":["Apenas a Defensoria Publica e o Ministerio Publico","Partido politico com representacao no Congresso e entidade associativa constituida ha pelo menos um ano, em defesa de seus membros","Qualquer pessoa fisica em nome do povo","Somente sindicatos de servidores publicos"],"a":1,"hint":"A legitimidade coletiva tem rol constitucional especifico.","ref":"Art. 5, LXX","note":"A Constituicao legitima partido com representacao no Congresso, sindicato, entidade de classe e associacao nos termos constitucionais.","exp":"O mandado de seguranca coletivo nao foi aberto a qualquer individuo, mas a sujeitos coletivos com representatividade definida."},
     {"level":3,"q":"A acao popular pode ser proposta por:","o":["Qualquer eleitor, na qualidade de cidadao","Qualquer residente no territorio nacional","Apenas o Ministerio Publico","Apenas partido politico com representacao no Congresso"],"a":0,"hint":"A acao popular e instrumento de cidadania ativa, nao mera legitimidade difusa aberta a todos indistintamente.","ref":"Art. 5, LXXIII","note":"A legitimidade exige cidadania, e nao simples residencia.","exp":"A Constituicao atribui ao cidadao, e nao a qualquer pessoa, o poder de acionar a jurisdicao para combater ato lesivo ao patrimonio publico."},
     {"level":3,"q":"Quanto ao habeas corpus, e correto afirmar que:","o":["Serve para proteger patrimonio publico","So pode ser impetrado por advogado regularmente inscrito","Protege a liberdade de locomocao contra ilegalidade ou abuso de poder","Exige custas processuais e deposito previo"],"a":2,"hint":"Trata-se do remedio constitucional historicamente ligado ao ir e vir.","ref":"Art. 5, LXVIII","note":"O habeas corpus e gratuito e vocacionado a tutelar a liberdade de locomocao.","exp":"Seu objeto e estrito: nao protege qualquer direito, mas especificamente a liberdade de locomocao ameacada ou violada."},
@@ -90,7 +462,7 @@ QUESTIONS = [
     {"level":3,"q":"O direito de peticao aos Poderes Publicos em defesa de direitos ou contra ilegalidade ou abuso de poder e exercido:","o":["Mediante pagamento de taxa administrativa","Independentemente do pagamento de taxas","Apenas por advogado","Somente perante o Poder Judiciario"],"a":1,"hint":"A Constituicao trata essa garantia como franqueada ao administrado sem custo.","ref":"Art. 5, XXXIV, a","note":"O direito de peticao nao se condiciona ao recolhimento de taxas.","exp":"A regra busca impedir barreiras economicas ao acesso do individuo aos Poderes Publicos para defesa de direitos."},
     {"level":3,"q":"Na acao popular, salvo comprovada ma-fe, o autor fica isento de:","o":["Custas judiciais e onus da sucumbencia","Qualquer comparecimento processual","Prova documental minima","Capacidade processual"],"a":0,"hint":"A Constituicao buscou incentivar a fiscalizacao cidada sem risco economico excessivo.","ref":"Art. 5, LXXIII","note":"A isencao e afastada em caso de ma-fe.","exp":"A acao popular foi desenhada para permitir controle civico do patrimonio publico e da moralidade sem desestimular o cidadao por receio financeiro."},
     {"level":3,"q":"O mandado de seguranca individual protege direito liquido e certo nao amparado por habeas corpus ou habeas data, quando o responsavel pela ilegalidade ou abuso e:","o":["Qualquer particular com poder economico relevante","Autoridade publica ou agente de pessoa juridica no exercicio de atribuicoes do Poder Publico","Unicamente o Presidente da Republica","Apenas o Ministerio Publico Federal"],"a":1,"hint":"O polo passivo do mandado de seguranca tem definicao constitucional funcional.","ref":"Art. 5, LXIX","note":"O mandado de seguranca protege contra ato de autoridade publica ou de agente em exercicio de funcao publica.","exp":"O conceito constitucional de autoridade coatora e funcional, nao organico, alcancando agentes privados quando exercem delegacao publica."},
-    # ── NIVEL 4 ────────────────────────────────────────────────────────────────
+    # â”€â”€ NIVEL 4 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     {"level":4,"q":"A respeito da saude no texto constitucional, assinale a alternativa correta:","o":["A saude e servico facultativo do Estado","A saude e direito de todos e dever do Estado, garantida mediante politicas sociais e economicas que visem a reducao do risco de doenca e ao acesso universal e igualitario","A saude e direito apenas de contribuintes da seguridade social","A saude publica depende de autorizacao legislativa anual para existir"],"a":1,"hint":"A Constituicao vincula saude, risco e acesso universal.","ref":"Art. 196","note":"O direito a saude tem densidade normativa propria e nao e mera diretriz politica vazia.","exp":"O texto constitucional define a saude como direito fundamental social dotado de exigibilidade e vinculado a acesso universal e igualitario."},
     {"level":4,"q":"Entre os direitos dos trabalhadores urbanos e rurais, a irredutibilidade do salario admite excecao:","o":["Por ato unilateral do empregador em crise financeira","Por convencao ou acordo coletivo","Por decreto do Poder Executivo","Por regulamento interno da empresa"],"a":1,"hint":"A flexibilizacao depende de negociacao coletiva constitucionalmente reconhecida.","ref":"Art. 7, VI","note":"A irredutibilidade salarial nao e absoluta, mas a excecao tem forma constitucionalmente delimitada.","exp":"A Constituicao admite reducao salarial apenas dentro de arranjo coletivo, afastando imposicoes unilaterais do empregador ou do Estado."},
     {"level":4,"q":"Qual opcao corresponde a direito social expressamente previsto no Art. 6 apos evolucao do texto constitucional?","o":["Transporte","Protecao cambial","Intervencao administrativa","Resgate bancario"],"a":0,"hint":"Esse direito foi acrescido ao rol por emenda constitucional.","ref":"Art. 6","note":"O transporte integra o rol formal dos direitos sociais.","exp":"O Art. 6 sofreu ampliacoes ao longo do tempo, e o transporte passou a ser expressamente reconhecido como direito social."},
@@ -99,7 +471,7 @@ QUESTIONS = [
     {"level":4,"q":"O seguro-desemprego, em caso de desemprego involuntario, figura no texto constitucional como:","o":["Favor administrativo eventual","Direito dos trabalhadores urbanos e rurais","Beneficio exclusivo de servidor estatutario","Prestacao civil sem relevancia constitucional"],"a":1,"hint":"A Constituicao trata a perda involuntaria do emprego como risco social merecedor de protecao.","ref":"Art. 7, II","note":"O seguro-desemprego e garantia constitucional do trabalhador.","exp":"A previsao constitucional integra a rede minima de protecao contra vulnerabilidades associadas ao trabalho."},
     {"level":4,"q":"A assistencia social na Constituicao sera prestada a quem dela necessitar:","o":["Apenas mediante contribuicao previa ao sistema","Independentemente de contribuicao a seguridade social","Somente a trabalhadores formalmente registrados","Mediante comprovacao de renda minima por tres anos"],"a":1,"hint":"A assistencia social difere da previdencia exatamente neste ponto.","ref":"Art. 203","note":"A assistencia social independe de contribuicao previa.","exp":"A Constituicao distingue assistencia social de previdencia: aquela nao exige contribuicao; esta sim."},
     {"level":4,"q":"A protecao ao trabalho noturno na Constituicao se expressa, entre outros pontos, por:","o":["Remuneracao do trabalho noturno superior a do diurno","Livre supressao de adicional por contrato individual","Equiparacao obrigatoria entre noturno e diurno sem adicional","Proibicao absoluta de trabalho noturno"],"a":0,"hint":"A resposta esta no rol do Art. 7.","ref":"Art. 7, IX","note":"A Constituicao assegura remuneracao do trabalho noturno superior a do diurno.","exp":"O adicional noturno traduz reconhecimento constitucional do maior desgaste social e biologico associado ao labor noturno."},
-    # ── NIVEL 5 ────────────────────────────────────────────────────────────────
+    # â”€â”€ NIVEL 5 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     {"level":5,"q":"Uma autoridade municipal exige licenca previa para passeata pacifica, sem armas, em praca publica, ainda que os organizadores tenham apresentado aviso previo. A exigencia e:","o":["Constitucional, porque toda reuniao publica depende de autorizacao","Inconstitucional, porque a liberdade de reuniao exige previo aviso, nao licenca","Constitucional apenas se o tema da manifestacao for politico","Constitucional apenas se a praca for bem publico municipal"],"a":1,"hint":"O aviso organiza o espaco publico; a licenca converte liberdade em permissao estatal.","ref":"Art. 5, XVI","note":"A Constituicao exige previo aviso, nao autorizacao.","exp":"Transformar reuniao pacifica em atividade dependente de licenca esvazia uma liberdade publica expressamente protegida."},
     {"level":5,"q":"Com ordem judicial valida, policiais ingressam as 23h na residencia de investigado apenas para cumprir busca domiciliar, sem flagrante, sem desastre e sem pedido de socorro. A medida e:","o":["Constitucional, porque a ordem judicial afasta qualquer limite horario","Inconstitucional, porque a ordem judicial, por si so, legitima ingresso apenas durante o dia","Constitucional, porque toda busca criminal dispensa as restricoes do Art. 5","Constitucional, desde que haja investigacao de crime hediondo"],"a":1,"hint":"A ordem judicial nao e cheque em branco para ingresso noturno.","ref":"Art. 5, XI","note":"Sem outra excecao constitucional, a ordem judicial se cumpre durante o dia.","exp":"A garantia domiciliar estabelece limite expresso para o cumprimento de ordem judicial, preservando a intimidade domiciliar noturna."},
     {"level":5,"q":"Brasileiro naturalizado e acusado de comprovado envolvimento com trafico ilicito de entorpecentes apos a naturalizacao. Diante do texto constitucional, a extradicao:","o":["E vedada em qualquer hipotese apos a naturalizacao","E possivel, porque a Constituicao admite extradicao do naturalizado por comprovado envolvimento com trafico ilicito de entorpecentes","So seria possivel se o crime fosse politico","Depende de previa cassacao da naturalizacao pelo Executivo"],"a":1,"hint":"A regra do naturalizado tem duas hipoteses constitucionais especificas.","ref":"Art. 5, LI","note":"O trafico ilicito de entorpecentes aparece expressamente como excecao constitucional.","exp":"O texto constitucional trata o naturalizado de forma distinta do nato e preve excecao expressa para trafico ilicito de entorpecentes."},
@@ -108,19 +480,19 @@ QUESTIONS = [
     {"level":5,"q":"Grupo de servidores tem direito constitucional inviabilizado ha anos porque o legislador nao editou a norma regulamentadora indispensavel. A medida constitucional mais adequada e:","o":["Habeas data","Mandado de injuncao","Acao popular","Habeas corpus"],"a":1,"hint":"O foco aqui e a omissao normativa que bloqueia direito.","ref":"Art. 5, LXXI","note":"O mandado de injuncao foi concebido para enfrentar a omissao regulamentadora constitucionalmente relevante.","exp":"Quando a falta de norma inviabiliza direito ou liberdade constitucional, o remedio adequado e o mandado de injuncao."},
     {"level":5,"q":"Autoridade policial determina abertura generalizada de correspondencia fisica de servidores para apuracao administrativa, sem ordem judicial. A medida e:","o":["Constitucional, por se tratar de servidores publicos","Inconstitucional, porque viola a inviolabilidade da correspondencia","Constitucional, desde que haja sindicancia interna","Constitucional, se a correspondencia estiver no local de trabalho"],"a":1,"hint":"A inviolabilidade da correspondencia nao desaparece por vinculacao funcional ao Estado.","ref":"Art. 5, XII","note":"A protecao constitucional do sigilo de correspondencia nao cede a controles administrativos genericos.","exp":"A administracao nao pode afastar, por mera conveniencia investigativa, garantia constitucional de sigilo de correspondencia."},
     {"level":5,"q":"Lei municipal proibe reuniao em praca historica da cidade nos fins de semana, alegando preservacao do patrimonio. Considerando o Art. 5, XVI, essa restricao e:","o":["Plenamente constitucional, pois patrimonio historico justifica qualquer restricao","Inconstitucional, pois a Constituicao nao permite restricoes locais a liberdade de reuniao","Potencialmente inconstitucional se a restricao generalizada anular o nucleo essencial da liberdade de reuniao","Constitucional apenas se aprovada por referendum popular"],"a":2,"hint":"A colisao entre liberdade de reuniao e preservacao do patrimonio exige proporcionalidade.","ref":"Art. 5, XVI e Art. 216","note":"Restricoes a direitos fundamentais devem ser proporcionais e nao podem esvaziar o nucleo essencial da garantia.","exp":"A analise constitucional exige ponderacao: restricoes generalizadas que inviabilizam o exercicio da liberdade sao inconstitucionais, ainda que o fim seja legitimo."},
-    # ── V/F QUESTIONS ──────────────────────────────────────────────────────
+    # â”€â”€ V/F QUESTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     {"level":1,"type":"tf","q":"Direitos fundamentais sao absolutos e nao admitem nenhuma restricao.","o":["Verdadeiro","Falso"],"a":1,"hint":"Pense na possibilidade de colisao entre direitos fundamentais.","ref":"Art. 5 e doutrina","note":"Direitos fundamentais nao sao absolutos; podem ser restringidos proporcionalmente.","exp":"A doutrina e o STF reconhecem que direitos fundamentais podem colidir entre si, exigindo ponderacao e proporcionalidade.","diff":"easy"},
     
-    # ── GOLDEN QUESTIONS ──────────────────────────────────────────────
+    # â”€â”€ GOLDEN QUESTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     {"level":2,"q":"O principio da presuncao de inocencia, previsto no Art. 5, LVII, da CF/88, estabelece que ninguem sera considerado culpado ate:","o":["A denuncia do Ministerio Publico","O transito em julgado de sentenca penal condenatoria","A prisao em flagrante","O indiciamento policial"],"a":1,"hint":"A Constituicao protege o acusado ate o esgotamento das vias recursais.","ref":"Art. 5, LVII","note":"Ninguem sera considerado culpado ate o transito em julgado de sentenca penal condenatoria.","exp":"O principio da presuncao de inocencia e clausula petrea e garante que a culpa so se estabelece definitivamente apos o transito em julgado da sentenca condenatoria.","diff":"hard",    "golden":True},
         {"level":4,"q":"A Constituicao Federal de 1988 preve que a educacao e direito de todos e dever do Estado e da familia, devendo ser promovida e incentivada com a colaboracao da sociedade. Qual artigo fundamenta essa disposicao?","o":["Art. 196","Art. 205","Art. 215","Art. 225"],"a":1,"hint":"Este artigo inaugura o capitulo sobre educacao na CF/88.","ref":"Art. 205","note":"A educacao e direito de todos e dever do Estado e da familia.","exp":"O Art. 205 estabelece o dever compartilhado entre Estado, familia e sociedade na promocao da educacao, visando o pleno desenvolvimento da pessoa, seu preparo para a cidadania e qualificacao para o trabalho.","diff":"hard","golden":True},
-    # ── BOSS QUESTIONS ────────────────────────────────────────────────
+    # â”€â”€ BOSS QUESTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     {"level":1,"q":"CASO PRATICO: Um cidadao teve sua residencia invadida por policiais as 23h, sem mandado judicial e sem flagrante delito. Com base na CF/88, analise: a invasao foi constitucional?","o":["Sim, pois a policia tem poder de investigacao","Nao, pois fora das hipoteses constitucionais (flagrante, desastre, socorro) a entrada depende de ordem judicial durante o DIA","Sim, desde que haja autorizacao verbal do delegado","Nao, porque nenhuma entrada em domicilio e permitida"],"a":1,"hint":"Atencao ao periodo do dia e as excecoes constitucionais.","ref":"Art. 5, XI","note":"A casa e asilo inviolavel. A entrada com ordem judicial so e permitida durante o dia.","exp":"A CF/88 estabelece que o ingresso em domicilio alheio sem consentimento so pode ocorrer em flagrante delito, desastre, socorro, ou por determinacao judicial DURANTE O DIA. A invasao noturna sem mandado e flagrante viola diretamente o Art. 5, XI.","diff":"hard",    "boss":True},
-        {"level":2,"q":"CASO PRATICO: O Congresso aprovou emenda constitucional que permite a pena de morte para crimes hediondos. Esta emenda e constitucional?","o":["Sim, pois o Congresso tem poder constituinte derivado","Nao, pois o direito a vida e clausula petrea e nao pode ser abolido por emenda","Sim, desde que aprovada por maioria absoluta","Depende de referendum popular"],"a":1,"hint":"Considere os limites materiais ao poder de reforma constitucional.","ref":"Art. 60, §4, IV","note":"Os direitos e garantias individuais sao clausulas petreas.","exp":"O Art. 60, §4, IV proibe emendas tendentes a abolir direitos e garantias individuais. O direito a vida (Art. 5, caput) e clausula petrea. Uma emenda que institua pena de morte fora das hipoteses ja previstas (guerra declarada) seria inconstitucional por violar o nucleo imodificavel da Constituicao.","diff":"hard","boss":True},
+        {"level":2,"q":"CASO PRATICO: O Congresso aprovou emenda constitucional que permite a pena de morte para crimes hediondos. Esta emenda e constitucional?","o":["Sim, pois o Congresso tem poder constituinte derivado","Nao, pois o direito a vida e clausula petrea e nao pode ser abolido por emenda","Sim, desde que aprovada por maioria absoluta","Depende de referendum popular"],"a":1,"hint":"Considere os limites materiais ao poder de reforma constitucional.","ref":"Art. 60, Â§4, IV","note":"Os direitos e garantias individuais sao clausulas petreas.","exp":"O Art. 60, Â§4, IV proibe emendas tendentes a abolir direitos e garantias individuais. O direito a vida (Art. 5, caput) e clausula petrea. Uma emenda que institua pena de morte fora das hipoteses ja previstas (guerra declarada) seria inconstitucional por violar o nucleo imodificavel da Constituicao.","diff":"hard","boss":True},
         {"level":3,"q":"CASO PRATICO: Um juiz determinou a interceptacao telefonica de um suspeito por 60 dias, sem renovacao fundamentada. A interceptacao e legal?","o":["Sim, o juiz tem ampla discricionariedade","Nao, a Lei 9.296/96 limita a interceptacao a 15 dias, renovavel por igual periodo com fundamentacao","Sim, desde que haja inquerito policial aberto","Depende da gravidade do crime"],"a":1,"hint":"A interceptacao telefonica tem prazo legal definido e exige fundamentacao para renovacao.","ref":"Art. 5, XII e Lei 9.296/96","note":"A interceptacao telefonica tem prazo maximo de 15 dias, renovavel por decisao fundamentada.","exp":"A Lei 9.296/96 regulamenta o Art. 5, XII da CF/88. A interceptacao so pode durar 15 dias, renovavel por igual periodo mediante decisao judicial fundamentada. Uma interceptacao de 60 dias sem renovacao fundamentada viola tanto a lei quanto a garantia constitucional do sigilo das comunicacoes.","diff":"hard","boss":True},
         {"level":4,"q":"CASO PRATICO: Um municipio criou lei proibindo manifestacoes publicas em todas as pracas da cidade. Analise a constitucionalidade dessa lei.","o":["Constitucional, pois o municipio tem autonomia legislativa","Inconstitucional, pois viola a liberdade de reuniao (Art. 5, XVI) que garante reuniao pacifica em locais abertos independente de autorizacao","Constitucional, se houver justificativa de ordem publica","Depende de regulamentacao federal"],"a":1,"hint":"A liberdade de reuniao e direito fundamental que independe de autorizacao estatal.","ref":"Art. 5, XVI","note":"Todos podem reunir-se pacificamente, sem armas, em locais abertos ao publico, independentemente de autorizacao.","exp":"O Art. 5, XVI garante o direito de reuniao pacifica em locais abertos ao publico, independentemente de autorizacao, bastando previo aviso a autoridade competente. Uma lei municipal que proiba manifestacoes em todas as pracas seria inconstitucional por esvaziar o conteudo essencial desse direito fundamental.","diff":"hard","boss":True},
         {"level":5,"q":"CASO PRATICO: O STF deve julgar um caso envolvendo conflito entre liberdade de expressao e direito a honra. Um jornalista publicou reportagem com informacoes verdadeiras mas prejudiciais a reputacao de um politico. Como resolver esse conflito?","o":["A liberdade de expressao sempre prevalece sobre a honra","A honra sempre prevalece sobre a liberdade de expressao","Deve-se aplicar a tecnica da ponderacao, avaliando proporcionalidade, interesse publico e veracidade das informacoes","O caso deve ser resolvido pela legislacao infraconstitucional apenas"],"a":2,"hint":"A colisao de direitos fundamentais exige tecnica hermeneutica especifica.","ref":"Art. 5, IV, V, IX, X e principio da proporcionalidade","note":"Conflitos entre direitos fundamentais sao resolvidos pela ponderacao.","exp":"Quando dois direitos fundamentais colidem, o STF aplica a tecnica da ponderacao (proporcionalidade). Nao ha hierarquia absoluta entre direitos fundamentais. No caso, deve-se avaliar: (1) veracidade da informacao, (2) interesse publico, (3) forma da publicacao, (4) proporcionalidade da restricao. Informacoes verdadeiras sobre agentes publicos gozam de maior protecao constitucional.","diff":"hard","boss":True},
-    # ── FILL-IN-BLANK QUESTIONS ───────────────────────────────────────
+    # â”€â”€ FILL-IN-BLANK QUESTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     {"level":1,"type":"fill","q":"Complete: 'Todo poder emana do ______, que o exerce por meio de representantes eleitos ou diretamente.'","answer":"povo","hint":"Art. 1, paragrafo unico da CF/88.","ref":"Art. 1, paragrafo unico","note":"Todo poder emana do povo.","exp":"O principio da soberania popular e fundamento do Estado Democratico de Direito, estabelecendo que a legitimidade do poder politico tem origem no povo.","diff":"easy"},
     {"level":1,"type":"fill","q":"Complete: 'A Republica Federativa do Brasil tem como fundamentos: a soberania, a cidadania, a ______ da pessoa humana.'","answer":"dignidade","hint":"Art. 1, III da CF/88.","ref":"Art. 1, III","note":"A dignidade da pessoa humana e fundamento da Republica.","exp":"A dignidade da pessoa humana e um dos cinco fundamentos da Republica Federativa do Brasil, funcionando como valor-fonte de todo o ordenamento juridico.","diff":"easy"},
     {"level":2,"type":"fill","q":"Complete: 'A casa e asilo ______ do individuo, ninguem nela podendo penetrar sem consentimento do morador.'","answer":"inviolavel","hint":"Art. 5, XI da CF/88.","ref":"Art. 5, XI","note":"A casa e asilo inviolavel do individuo.","exp":"A inviolabilidade de domicilio e direito fundamental que protege a esfera de privacidade do individuo, admitindo excecoes apenas nas hipoteses taxativas da Constituicao.","diff":"easy"},
@@ -407,7 +779,7 @@ function useSkip() {
   state.used.skip = true;
   if (ui.btnSkip) ui.btnSkip.disabled = true;
   playSound('skip');
-  showAssist('⏭ Pergunta pulada! Sem pontos.');
+  showAssist('â­ Pergunta pulada! Sem pontos.');
   state.answered = true;
   clearInterval(state.ticker);
   state.wrongQs.push(state.deck[state.idx]);
@@ -420,7 +792,7 @@ function useExtraTime() {
   state.used.extraTime = true;
   if (ui.btnExtraTime) ui.btnExtraTime.disabled = true;
   state.timeLeft += 15;
-  showAssist('⏱ +15 segundos adicionados!');
+  showAssist('â± +15 segundos adicionados!');
   playSound('tick');
 }
 
@@ -879,8 +1251,330 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   ACCOUNT SYSTEM
+   INVESTIGATION GAME STYLES
    ══════════════════════════════════════════════════════════════════════ */
+
+@keyframes invSlideUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:none}}
+@keyframes invFadeIn{from{opacity:0}to{opacity:1}}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+@keyframes invGlow{0%,100%{box-shadow:0 0 10px rgba(139,92,246,.3)}50%{box-shadow:0 0 30px rgba(139,92,246,.7),0 0 60px rgba(139,92,246,.2)}}
+@keyframes invTimerUrgent{0%,100%{color:#ef4444}50%{color:#ff6b6b;text-shadow:0 0 20px rgba(239,68,68,.8)}}
+
+.inv-overlay{
+  position:fixed;inset:0;z-index:2500;
+  background:linear-gradient(160deg,#030608 0%,#060a12 50%,#04060e 100%);
+  display:flex;flex-direction:column;
+  animation:invFadeIn .4s ease both;
+  overflow:hidden;
+}
+.inv-overlay.hidden{display:none!important}
+
+/* Header */
+.inv-header{
+  display:flex;align-items:center;gap:14px;
+  padding:12px 20px;
+  background:linear-gradient(90deg,rgba(139,92,246,.1),rgba(59,130,246,.06));
+  border-bottom:1px solid rgba(139,92,246,.25);
+  flex-shrink:0;flex-wrap:wrap;gap:10px;
+}
+.inv-back-btn{
+  padding:7px 14px;border-radius:10px;border:1px solid rgba(139,92,246,.4);
+  background:rgba(139,92,246,.1);color:#c4b5fd;cursor:pointer;font-size:.85rem;font-weight:700;
+  transition:all .2s;white-space:nowrap;
+}
+.inv-back-btn:hover{background:rgba(139,92,246,.2);transform:translateX(-2px)}
+.inv-header-title{font-weight:900;font-size:1rem;color:#fff;flex:1}
+.inv-phase-indicator{
+  padding:5px 12px;border-radius:99px;font-size:.78rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;
+  background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.35);color:#a78bfa;
+}
+.inv-timer{font-size:1.4rem;font-weight:900;color:#c4b5fd;min-width:50px;text-align:right}
+
+/* Screens */
+.inv-screen{flex:1;overflow-y:auto;padding:16px 0;animation:invSlideUp .35s ease both}
+
+/* Cards */
+.inv-card{
+  padding:18px 20px;border-radius:16px;margin:0 16px 14px;
+  background:linear-gradient(160deg,rgba(12,16,26,.97),rgba(8,11,20,.97));
+  border:1px solid rgba(139,92,246,.2);
+}
+.inv-card h3{font-size:1rem;color:#fff;margin-bottom:10px}
+.inv-card h4{font-size:.88rem;color:#c4b5fd;margin-bottom:8px}
+
+/* Inputs */
+.inv-input{
+  width:100%;padding:11px 14px;border-radius:11px;margin-bottom:10px;
+  background:rgba(255,255,255,.04);border:1px solid rgba(139,92,246,.3);
+  color:#e8edf5;font-size:.92rem;outline:none;transition:border-color .2s;
+}
+.inv-input:focus{border-color:rgba(139,92,246,.7);box-shadow:0 0 20px rgba(139,92,246,.1)}
+
+/* Buttons */
+.inv-btn-primary{
+  width:100%;padding:13px;border-radius:12px;border:1px solid rgba(139,92,246,.5);
+  background:linear-gradient(135deg,rgba(139,92,246,.3),rgba(109,40,217,.2));
+  color:#e9d5ff;font-weight:800;font-size:.95rem;cursor:pointer;
+  transition:all .2s;
+}
+.inv-btn-primary:hover{background:linear-gradient(135deg,rgba(139,92,246,.45),rgba(109,40,217,.35));transform:translateY(-2px);box-shadow:0 0 20px rgba(139,92,246,.3)}
+.inv-btn-secondary{
+  width:100%;padding:12px;border-radius:12px;border:1px solid rgba(59,130,246,.4);
+  background:rgba(59,130,246,.1);color:#93c5fd;font-weight:700;font-size:.92rem;cursor:pointer;
+  transition:all .2s;
+}
+.inv-btn-secondary:hover{background:rgba(59,130,246,.2);transform:translateY(-2px)}
+.inv-btn-ghost{
+  padding:8px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.04);color:#9ca3af;font-size:.82rem;cursor:pointer;
+  transition:all .2s;
+}
+.inv-btn-ghost:hover{background:rgba(255,255,255,.08);color:#fff}
+
+/* Lobby */
+.inv-lobby-container{max-width:860px;margin:0 auto;padding:0 4px}
+.inv-lobby-hero{text-align:center;margin-bottom:24px;padding:24px 16px 0}
+.inv-logo{font-size:3.5rem;margin-bottom:10px;animation:pulse 3s ease infinite}
+.inv-title{font-family:Georgia,serif;font-size:clamp(1.8rem,5vw,2.8rem);color:#fff;margin-bottom:8px;background:linear-gradient(135deg,#fff 30%,#a78bfa 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.inv-subtitle{color:#8b8ba0;line-height:1.6;font-size:.95rem;max-width:500px;margin:0 auto}
+.inv-lobby-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:600px){.inv-lobby-grid{grid-template-columns:1fr}}
+
+/* Rooms list */
+.inv-room-item{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 14px;border-radius:12px;margin-bottom:8px;
+  background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.2);
+  animation:invSlideUp .3s ease both;
+}
+.inv-room-join-btn{
+  padding:7px 14px;border-radius:9px;border:1px solid rgba(139,92,246,.4);
+  background:rgba(139,92,246,.15);color:#c4b5fd;font-size:.8rem;font-weight:700;cursor:pointer;
+  transition:all .2s;white-space:nowrap;
+}
+.inv-room-join-btn:hover{background:rgba(139,92,246,.3)}
+.inv-empty{
+  padding:14px;text-align:center;color:#6b7280;font-size:.85rem;
+  border:1px dashed rgba(139,92,246,.2);border-radius:12px;
+}
+
+/* Room code display */
+.inv-room-code-display{
+  font-size:2.4rem;font-weight:900;letter-spacing:.2em;
+  color:#a78bfa;padding:14px 20px;margin:12px 0;
+  background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.3);
+  border-radius:14px;font-family:monospace;
+  animation:invGlow 2s ease infinite;
+}
+
+/* Waiting players */
+.inv-waiting-player{
+  display:flex;align-items:center;gap:10px;padding:10px 12px;
+  border-radius:11px;margin-bottom:6px;
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);
+}
+.inv-waiting-player.ready{border-color:rgba(16,185,129,.3);background:rgba(16,185,129,.06)}
+.inv-player-avatar{font-size:1.4rem}
+.inv-player-name{font-size:.9rem;color:#fff;font-weight:700}
+.inv-player-status{font-size:.75rem;color:#6b7280;margin-left:auto}
+.inv-player-status.ready{color:#34d399}
+
+/* Waiting container */
+.inv-waiting-container{max-width:600px;margin:0 auto;padding:0 4px}
+
+/* Case intro */
+.inv-game-container{max-width:700px;margin:0 auto;padding:0 4px}
+.inv-case-badge{display:inline-flex;align-items:center;padding:4px 12px;border-radius:99px;font-size:.75rem;font-weight:800;text-transform:uppercase;letter-spacing:.1em;background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.35);color:#a78bfa;margin-bottom:12px}
+.inv-case-title{font-family:Georgia,serif;font-size:clamp(1.4rem,4vw,2rem);color:#fff;margin-bottom:14px}
+.inv-case-historia{color:#b0b8d0;line-height:1.75;font-size:.95rem}
+.inv-envolvidos-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.inv-envolvido-chip{padding:5px 12px;border-radius:99px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.25);color:#93c5fd;font-size:.8rem;font-weight:700}
+
+/* Countdown ring */
+.inv-countdown-ring{
+  font-size:3rem;font-weight:900;color:#a78bfa;
+  width:90px;height:90px;border-radius:50%;
+  border:3px solid rgba(139,92,246,.4);
+  display:flex;align-items:center;justify-content:center;
+  margin:0 auto 10px;
+  transition:color .3s,border-color .3s;
+}
+.inv-countdown-ring.urgent{color:#ef4444;border-color:rgba(239,68,68,.5);animation:invTimerUrgent 1s ease infinite}
+
+/* Role reveal */
+.inv-role-card{
+  padding:20px;border-radius:16px;text-align:center;margin-top:14px;
+  animation:invSlideUp .5s cubic-bezier(.22,1,.36,1) both;
+}
+.inv-role-display{
+  padding:14px;border-radius:14px;
+  display:flex;align-items:center;gap:12px;
+  margin:0 16px 14px;
+}
+.inv-role-icon{font-size:2.4rem}
+.inv-role-name{font-size:1rem;color:#fff;font-weight:900}
+.inv-role-title{font-size:.78rem;margin-top:2px}
+.inv-role-desc{font-size:.8rem;color:#9ca3af;margin-top:4px;line-height:1.5}
+
+/* Investigation layout */
+.inv-investigation-layout{
+  display:grid;grid-template-columns:1.4fr .85fr;gap:14px;
+  padding:0 16px;max-width:1200px;margin:0 auto;height:calc(100vh - 120px);
+}
+@media(max-width:900px){
+  .inv-investigation-layout{grid-template-columns:1fr;height:auto}
+  .inv-right-panel{order:-1}
+}
+.inv-left-panel{overflow-y:auto;padding-right:4px}
+.inv-right-panel{overflow-y:auto;display:flex;flex-direction:column;gap:10px}
+
+/* Tabs */
+.inv-tabs{display:flex;gap:6px;margin:0 16px 12px;flex-shrink:0}
+.inv-tab{
+  padding:9px 16px;border-radius:10px;border:1px solid rgba(139,92,246,.2);
+  background:transparent;color:#6b7280;font-size:.85rem;font-weight:700;cursor:pointer;
+  transition:all .2s;
+}
+.inv-tab.active{background:rgba(139,92,246,.2);border-color:rgba(139,92,246,.5);color:#c4b5fd}
+.inv-tab-content{animation:invFadeIn .25s ease}
+
+/* Evidence */
+.inv-evidence-item{
+  padding:14px 16px;border-radius:13px;margin-bottom:8px;
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);
+  transition:all .25s;cursor:default;
+}
+.inv-evidence-item.contested{border-color:rgba(59,130,246,.4);background:rgba(59,130,246,.05)}
+.inv-evidence-item.contested::before{content:'⚖️ CONTESTADA';display:block;font-size:.68rem;color:#60a5fa;font-weight:800;margin-bottom:6px;letter-spacing:.06em}
+.inv-evidence-item.critical{border-color:rgba(239,68,68,.45);background:rgba(239,68,68,.06)}
+.inv-evidence-item.critical::before{content:'🔥 CRÍTICA';display:block;font-size:.68rem;color:#f87171;font-weight:800;margin-bottom:6px;letter-spacing:.06em}
+.inv-ev-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.inv-ev-title{font-size:.9rem;font-weight:800;color:#fff}
+.inv-ev-peso{font-size:.72rem;padding:2px 8px;border-radius:99px;font-weight:800}
+.inv-ev-desc{font-size:.83rem;color:#9ca3af;line-height:1.55}
+.inv-ev-actions{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.inv-ev-btn{
+  padding:5px 10px;border-radius:8px;font-size:.75rem;font-weight:700;cursor:pointer;
+  border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#9ca3af;
+  transition:all .2s;
+}
+.inv-ev-btn:hover{background:rgba(255,255,255,.1);color:#fff;border-color:rgba(255,255,255,.25)}
+.inv-ev-btn.prim{border-color:rgba(139,92,246,.4);color:#c4b5fd;background:rgba(139,92,246,.1)}
+.inv-ev-btn.prim:hover{background:rgba(139,92,246,.25)}
+.inv-ev-btn.danger{border-color:rgba(239,68,68,.35);color:#f87171;background:rgba(239,68,68,.06)}
+
+/* Duvidas */
+.inv-duvidas{margin-top:14px}
+.inv-duvida-item{
+  padding:10px 13px;border-radius:10px;margin-bottom:6px;font-size:.84rem;
+  background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);color:#fcd34d;
+}
+
+/* Chat */
+.inv-chat-messages{
+  height:220px;overflow-y:auto;padding:8px 0;margin-bottom:8px;
+}
+.inv-chat-msg{
+  padding:7px 10px;border-radius:10px;margin-bottom:5px;font-size:.82rem;
+  background:rgba(255,255,255,.03);
+}
+.inv-chat-msg .inv-chat-sender{font-weight:800;font-size:.72rem;margin-bottom:2px}
+.inv-chat-msg .inv-chat-text{color:#c8c8d8;line-height:1.5}
+.inv-quick-args{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.inv-arg-btn{
+  padding:6px 12px;border-radius:9px;font-size:.78rem;font-weight:700;cursor:pointer;
+  border:1px solid rgba(139,92,246,.25);background:rgba(139,92,246,.08);color:#a78bfa;
+  transition:all .2s;
+}
+.inv-arg-btn:hover{background:rgba(139,92,246,.2)}
+
+/* Players list */
+.inv-player-row{
+  display:flex;align-items:center;gap:8px;padding:8px 10px;
+  border-radius:10px;margin-bottom:5px;
+  background:rgba(255,255,255,.025);
+}
+.inv-player-row-role{font-size:.72rem;padding:2px 7px;border-radius:99px;font-weight:800;margin-left:auto;white-space:nowrap}
+
+/* Actions log */
+.inv-actions-log{max-height:160px;overflow-y:auto}
+.inv-log-item{font-size:.78rem;color:#9ca3af;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);line-height:1.4}
+
+/* Timer box */
+.inv-timer-box{
+  padding:12px 16px;border-radius:12px;text-align:center;
+  background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.25);
+  font-size:1.6rem;font-weight:900;color:#a78bfa;
+}
+
+/* Vote */
+.inv-vote-container{max-width:760px;margin:0 auto;padding:0 4px}
+.inv-vote-grid{display:grid;gap:14px}
+.inv-vote-section h3{font-size:.95rem;color:#fff;margin-bottom:12px}
+.inv-vote-options{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:500px){.inv-vote-options{grid-template-columns:1fr}}
+.inv-vote-btn{
+  padding:13px 16px;border-radius:13px;cursor:pointer;text-align:left;
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);
+  color:#c8c8d8;font-size:.88rem;font-weight:700;
+  transition:all .2s;
+}
+.inv-vote-btn:hover{background:rgba(139,92,246,.12);border-color:rgba(139,92,246,.4);color:#e9d5ff;transform:translateY(-1px)}
+.inv-vote-btn.selected{background:rgba(139,92,246,.2);border-color:rgba(139,92,246,.6);color:#e9d5ff;box-shadow:0 0 18px rgba(139,92,246,.2)}
+.inv-vote-btn.small{padding:9px 12px;font-size:.8rem}
+.inv-artigo-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
+.inv-culpado-options{display:grid;gap:8px}
+.inv-vote-summary{
+  padding:14px 16px;border-radius:12px;
+  background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.3);
+  font-size:.88rem;color:#c4b5fd;
+}
+
+/* Resultado */
+.inv-resultado-container{max-width:700px;margin:0 auto;padding:0 4px}
+.inv-resultado-hero{text-align:center;padding:24px}
+.inv-resultado-hero h2{font-family:Georgia,serif;font-size:1.6rem;color:#fff;margin-top:8px}
+.inv-resposta-correta{
+  margin-top:14px;padding:14px 18px;border-radius:12px;
+  background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.3);
+  text-align:left;
+}
+.inv-resposta-correta h4{color:#34d399;font-size:.88rem;margin-bottom:8px}
+.inv-resposta-item{display:flex;justify-content:space-between;padding:5px 0;font-size:.85rem;color:#c8c8d8;border-bottom:1px solid rgba(255,255,255,.05)}
+.inv-rank-item{
+  display:flex;align-items:center;gap:12px;padding:12px 14px;
+  border-radius:12px;margin-bottom:8px;
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);
+  animation:invSlideUp .3s ease both;
+}
+.inv-rank-item:nth-child(1){border-color:rgba(255,215,0,.3);background:rgba(255,215,0,.04)}
+.inv-rank-item:nth-child(2){border-color:rgba(192,192,192,.2)}
+.inv-rank-item:nth-child(3){border-color:rgba(205,127,50,.2)}
+.inv-rank-pos{font-size:1.4rem;width:30px;text-align:center}
+.inv-rank-name{font-weight:800;color:#fff;font-size:.9rem}
+.inv-rank-score{font-size:1.3rem;font-weight:900;color:#a78bfa;margin-left:auto}
+.inv-rank-details{font-size:.72rem;color:#6b7280;margin-top:3px}
+.inv-rules-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+@media(max-width:500px){.inv-rules-grid{grid-template-columns:1fr}}
+.inv-rule{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:10px;background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.15)}
+.inv-rule-icon{font-size:1.3rem;flex-shrink:0}
+.inv-rule small{font-size:.75rem;color:#6b7280;margin-top:3px;display:block}
+.inv-rule strong{font-size:.85rem;color:#e9d5ff}
+.inv-skill-btn{
+  display:block;width:100%;padding:10px 14px;border-radius:11px;margin-bottom:6px;
+  background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.25);
+  color:#c4b5fd;font-size:.82rem;font-weight:700;cursor:pointer;text-align:left;
+  transition:all .2s;
+}
+.inv-skill-btn:hover:not(:disabled){background:rgba(139,92,246,.2);transform:translateX(3px)}
+.inv-skill-btn:disabled{opacity:.35;cursor:not-allowed}
+.inv-skill-cd{float:right;font-size:.72rem;color:#6b7280;font-weight:400}
+
+/* ══ END INVESTIGATION STYLES ═════════════════════════════════════════ */
+
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   ACCOUNT SYSTEM
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 #auth-wall{
   position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;
   background:linear-gradient(160deg,#02040a 0%,#05090f 50%,#030710 100%);
@@ -953,13 +1647,13 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
 </style>
 </head>
 <body>
-<!-- ═══════════════════════════════════════════════════════════════════
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
      AUTH WALL — aparece antes do jogo
-     ═══════════════════════════════════════════════════════════════════ -->
+     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div id='auth-wall'>
   <div class='auth-box'>
     <div class='auth-logo'>
-      <span class='al-icon'>⚖️</span>
+      <span class='al-icon'>⚖ï¸</span>
       <h1>Guardiao da Constituicao</h1>
       <p>Crie sua conta ou entre para salvar seu progresso</p>
     </div>
@@ -979,7 +1673,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
       </div>
       <div class='auth-error' id='login-error'></div>
       <div class='auth-success' id='login-success'></div>
-      <button class='auth-submit' id='btn-login' onclick='doLogin()'>Entrar na Arena ⚔️</button>
+      <button class='auth-submit' id='btn-login' onclick='doLogin()'>Entrar na Arena ⚔ï¸</button>
     </div>
     <!-- REGISTER -->
     <div id='auth-register-form' style='display:none'>
@@ -1001,7 +1695,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
       </div>
       <div class='auth-error' id='reg-error'></div>
       <div class='auth-success' id='reg-success'></div>
-      <button class='auth-submit' id='btn-register' onclick='doRegister()'>Criar minha conta 🏛️</button>
+      <button class='auth-submit' id='btn-register' onclick='doRegister()'>Criar minha conta ðŸ›ï¸</button>
     </div>
     <div class='auth-guest'>
       <button onclick='playAsGuest()'>Jogar sem conta (progresso nao salvo)</button>
@@ -1029,16 +1723,16 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
       <div id='user-badge' style='display:none'>
         <span class='ub-avatar' id='ub-av'>📚</span>
         <span class='ub-name' id='ub-name'>Jogador</span>
-        <span class='ub-logout' onclick='doLogout()' title='Sair'>⏏</span>
+        <span class='ub-logout' onclick='doLogout()' title='Sair'>â</span>
       </div>
       <button class='icon-btn' id='btn-sound' title='Som'>🔊</button>
-      <button class='icon-btn' id='btn-settings' title='Configuracoes'>⚙️</button>
+      <button class='icon-btn' id='btn-settings' title='Configuracoes'>⚙ï¸</button>
     </div>
   </section>
 
   <!-- HERO -->
   <section class='box hero'>
-    <div class='eyebrow'>⚖️ Arena Constitucional — Ranking em Tempo Real</div>
+    <div class='eyebrow'>⚖ï¸ Arena Constitucional — Ranking em Tempo Real</div>
     <h1>Guardiao da Constituicao</h1>
     <p>Prove que voce domina a Constituicao Federal de 1988. Cinco niveis progressivos, multiplos modos de jogo, sistema de XP e progressao, ranking global ao vivo.</p>
     <div class='hero-stats'>
@@ -1069,7 +1763,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
               <p>15 questoes, 5 niveis progressivos</p>
             </div>
             <div class='mode-card' data-mode='infinite' onclick='selectMode("infinite")'>
-              <div class='mode-icon'>♾️</div>
+              <div class='mode-icon'>♾ï¸</div>
               <h3>Infinito</h3>
               <p>Jogue ate errar. Quanto mais longe, melhor!</p>
             </div>
@@ -1095,18 +1789,25 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
           <button class='btn secondary' id='btn-reload-rank'>↻ Atualizar ranking</button>
           <button class='btn ghost hidden' id='btn-install'>📲 Instalar app</button>
         </div>
+        <div style='margin-top:14px'>
+          <button class='btn inv-btn' onclick='openInvestigacao()' style='width:100%;padding:16px 20px;font-size:1rem;background:linear-gradient(135deg,rgba(139,92,246,.18),rgba(59,130,246,.12));border:1px solid rgba(139,92,246,.5);color:#c4b5fd;border-radius:16px;display:flex;align-items:center;justify-content:center;gap:10px;transition:all .3s ease;cursor:pointer;'>
+            <span style='font-size:1.4rem'>🔍</span>
+            <span><strong style='color:#a78bfa'>Investigação Criminal</strong><br><small style='font-weight:400;font-size:.78rem;color:#8b5cf6'>Multiplayer em tempo real — Resolva casos constitucionais</small></span>
+            <span style='margin-left:auto;font-size:.75rem;padding:3px 10px;border-radius:99px;background:rgba(139,92,246,.2);border:1px solid rgba(139,92,246,.4);color:#a78bfa'>NOVO</span>
+          </button>
+        </div>
         <div class='info' style='margin-top:14px'><strong>Ranking:</strong> salvo localmente no servidor. Para compartilhar entre jogadores, mantenha o servidor Python rodando na rede.</div>
         <div style='margin-top:18px;padding:12px 16px;border-radius:12px;background:linear-gradient(135deg,rgba(21,101,192,.08),rgba(21,101,192,.03));border:1px solid rgba(21,101,192,.25);text-align:center;font-size:.82rem;color:#7ab0e0'>
-          <span style='font-size:1rem'>⚖️</span> Programado por <strong style='color:#c8a000'>Icaro Lucas Pereira Batista</strong>
+          <span style='font-size:1rem'>⚖ï¸</span> Programado por <strong style='color:#c8a000'>Icaro Lucas Pereira Batista</strong>
         </div>
       </section>
 
       <!-- GAME -->
       <section class='box panel hidden' id='game'>
         <div class='lives-bar' id='lives-bar'>
-          <span class='heart' id='heart-1'>❤️</span>
-          <span class='heart' id='heart-2'>❤️</span>
-          <span class='heart' id='heart-3'>❤️</span>
+          <span class='heart' id='heart-1'>â¤ï¸</span>
+          <span class='heart' id='heart-2'>â¤ï¸</span>
+          <span class='heart' id='heart-3'>â¤ï¸</span>
         </div>
         <div class='hud'>
           <div class='hud-box'><div class='lbl'>Pontuacao</div><div class='val' id='hud-score'>0</div></div>
@@ -1150,11 +1851,11 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
             <small>Uso unico por partida</small>
           </div>
           <div class='help-card'>
-            <button class='btn secondary' id='btn-skip' style='width:100%'>⏭ Pular pergunta</button>
+            <button class='btn secondary' id='btn-skip' style='width:100%'>â­ Pular pergunta</button>
             <small>Uso unico por partida</small>
           </div>
           <div class='help-card'>
-            <button class='btn secondary' id='btn-extra-time' style='width:100%'>⏱ +15 segundos</button>
+            <button class='btn secondary' id='btn-extra-time' style='width:100%'>â± +15 segundos</button>
             <small>Uso unico por partida</small>
           </div>
         </div>
@@ -1174,7 +1875,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
       <!-- RANKING -->
       <section class='box panel'>
         <div class='rank-hdr'>
-          <h2>🏆 Ranking Global</h2>
+          <h2>ðŸ† Ranking Global</h2>
           <span class='chip'>Atualiza 5s</span>
         </div>
         <div class='ranking' id='ranking-list'>
@@ -1197,7 +1898,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
         <p id='res-text'></p>
         <div class='stat-grid' id='stat-grid'></div>
         <div id='wrong-section' class='hidden'>
-          <div style='font-size:.88rem;font-weight:800;color:#7ab0e0;margin-bottom:8px'>❌ Perguntas que voce errou:</div>
+          <div style='font-size:.88rem;font-weight:800;color:#7ab0e0;margin-bottom:8px'>âŒ Perguntas que voce errou:</div>
           <div class='wrong-list' id='wrong-list'></div>
         </div>
         <div class='save-row'>
@@ -1214,7 +1915,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
 
       <!-- CONSTITUTION MAP -->
       <section class='box panel' id='const-map-section'>
-        <h2>🗺️ Mapa da Constituicao</h2>
+        <h2>🗺ï¸ Mapa da Constituicao</h2>
         <div class='const-map' id='const-map'></div>
       </section>
 
@@ -1256,22 +1957,247 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
 <div id='settings-modal' class='hidden'></div>
 <div id='combo-banner'></div>
 
+<!-- ── INVESTIGATION GAME OVERLAY ── -->
+<div id='inv-overlay' class='inv-overlay hidden'>
+  <div class='inv-header'>
+    <button class='inv-back-btn' onclick='closeInvestigacao()'>← Voltar</button>
+    <div class='inv-header-title'>🔍 Investigação Criminal</div>
+    <div class='inv-phase-indicator' id='inv-phase-indicator'></div>
+    <div class='inv-timer' id='inv-global-timer'></div>
+  </div>
+
+  <!-- LOBBY SCREEN -->
+  <div id='inv-screen-lobby' class='inv-screen'>
+    <div class='inv-lobby-container'>
+      <div class='inv-lobby-hero'>
+        <div class='inv-logo'>⚖️</div>
+        <h1 class='inv-title'>Investigação Criminal</h1>
+        <p class='inv-subtitle'>Assuma um papel jurídico. Analise evidências. Descubra a verdade constitucional.</p>
+      </div>
+
+      <div class='inv-lobby-grid'>
+        <!-- Create Room -->
+        <div class='inv-card'>
+          <h3>🆕 Nova Sala</h3>
+          <p style='color:var(--muted);font-size:.85rem;margin:8px 0 14px'>Crie uma sala e espere outros jogadores</p>
+          <input id='inv-player-name' class='inv-input' placeholder='Seu nome (ex: Dr. Silva)' maxlength='20'>
+          <button class='inv-btn-primary' onclick='invCreateRoom()'>Criar Sala</button>
+        </div>
+        <!-- Join Room -->
+        <div class='inv-card'>
+          <h3>🚪 Entrar em Sala</h3>
+          <p style='color:var(--muted);font-size:.85rem;margin:8px 0 14px'>Entre em uma sala existente com o código</p>
+          <input id='inv-room-code' class='inv-input' placeholder='Código da sala (ex: AB12CD34)' maxlength='10' style='text-transform:uppercase'>
+          <button class='inv-btn-secondary' onclick='invJoinRoom()'>Entrar</button>
+        </div>
+      </div>
+
+      <!-- Available Rooms -->
+      <div class='inv-card' style='margin-top:16px'>
+        <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:12px'>
+          <h3>🌐 Salas Disponíveis</h3>
+          <button class='inv-btn-ghost' onclick='invRefreshRooms()'>↻ Atualizar</button>
+        </div>
+        <div id='inv-rooms-list'><div class='inv-empty'>Nenhuma sala aberta. Crie a primeira!</div></div>
+      </div>
+
+      <!-- Rules Quick -->
+      <div class='inv-card' style='margin-top:16px;background:rgba(139,92,246,.06);border-color:rgba(139,92,246,.25)'>
+        <h3 style='color:#a78bfa'>📋 Como Jogar</h3>
+        <div class='inv-rules-grid'>
+          <div class='inv-rule'><span class='inv-rule-icon'>👥</span><div><strong>2-7 jogadores</strong><br><small>Cada um recebe um papel jurídico único</small></div></div>
+          <div class='inv-rule'><span class='inv-rule-icon'>🔍</span><div><strong>Investigação (3 min)</strong><br><small>Analise evidências e use suas habilidades</small></div></div>
+          <div class='inv-rule'><span class='inv-rule-icon'>⚖️</span><div><strong>Votação (45s)</strong><br><small>Vote em violação, artigo e culpado</small></div></div>
+          <div class='inv-rule'><span class='inv-rule-icon'>🏆</span><div><strong>Pontuação</strong><br><small>Violação +20, Artigo +50, Culpado +30</small></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- WAITING ROOM SCREEN -->
+  <div id='inv-screen-waiting' class='inv-screen hidden'>
+    <div class='inv-waiting-container'>
+      <div class='inv-card' style='text-align:center'>
+        <div style='font-size:3rem;margin-bottom:12px;animation:pulse 2s ease infinite'>⏳</div>
+        <h2>Aguardando Jogadores</h2>
+        <div class='inv-room-code-display' id='inv-my-room-code'>----</div>
+        <p style='color:var(--muted);font-size:.85rem'>Compartilhe este código para outros entrarem</p>
+      </div>
+
+      <div class='inv-card' style='margin-top:14px'>
+        <h3>👥 Jogadores na Sala (<span id='inv-waiting-count'>1</span>/7)</h3>
+        <div id='inv-waiting-players'></div>
+        <div style='margin-top:14px'>
+          <button class='inv-btn-primary' id='inv-btn-ready' onclick='invMarkReady()'>✅ Estou Pronto!</button>
+          <p style='color:var(--muted);font-size:.78rem;margin-top:8px;text-align:center'>O jogo inicia quando todos clicarem em Pronto (mín. 2 jogadores)</p>
+        </div>
+      </div>
+
+      <div class='inv-card' style='margin-top:14px;background:rgba(59,130,246,.06);border-color:rgba(59,130,246,.25)'>
+        <h3>📁 Caso: <span id='inv-waiting-case' style='color:#60a5fa'></span></h3>
+        <p style='color:var(--muted);font-size:.85rem;margin-top:8px'>Detalhes do caso serão revelados quando o jogo começar</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- INTRO SCREEN -->
+  <div id='inv-screen-intro' class='inv-screen hidden'>
+    <div class='inv-game-container'>
+      <div class='inv-case-intro inv-card'>
+        <div class='inv-case-badge'>📋 Caso</div>
+        <h2 id='inv-intro-title' class='inv-case-title'></h2>
+        <p id='inv-intro-historia' class='inv-case-historia'></p>
+        <div class='inv-envolvidos-list' id='inv-intro-envolvidos'></div>
+      </div>
+      <div class='inv-card' style='margin-top:14px;text-align:center'>
+        <div class='inv-countdown-ring' id='inv-intro-countdown'>45</div>
+        <p style='color:var(--muted)'>Leia o caso. A investigação começa em breve.</p>
+      </div>
+      <div id='inv-role-reveal' class='inv-role-card hidden'></div>
+    </div>
+  </div>
+
+  <!-- INVESTIGATION SCREEN -->
+  <div id='inv-screen-investigacao' class='inv-screen hidden'>
+    <div class='inv-investigation-layout'>
+      <!-- Left: Case + Evidence -->
+      <div class='inv-left-panel'>
+        <div class='inv-tabs'>
+          <button class='inv-tab active' onclick='invTab("case")'>📋 Caso</button>
+          <button class='inv-tab' onclick='invTab("evidence")'>🔍 Evidências</button>
+          <button class='inv-tab' onclick='invTab("chat")'>💬 Debate</button>
+        </div>
+        <div id='inv-tab-case' class='inv-tab-content'>
+          <div class='inv-card'>
+            <h3 id='inv-case-title-small'></h3>
+            <p id='inv-case-historia-small' style='color:#b8b8c8;line-height:1.7;font-size:.88rem'></p>
+            <div class='inv-duvidas' id='inv-case-duvidas'></div>
+          </div>
+        </div>
+        <div id='inv-tab-evidence' class='inv-tab-content hidden'>
+          <div id='inv-evidence-list'></div>
+        </div>
+        <div id='inv-tab-chat' class='inv-tab-content hidden'>
+          <div id='inv-chat-messages' class='inv-chat-messages'></div>
+          <div class='inv-chat-input-row'>
+            <div class='inv-quick-args' id='inv-quick-args'>
+              <button class='inv-arg-btn' onclick='invSendArg("Há violação clara dos direitos")'>Há violação clara</button>
+              <button class='inv-arg-btn' onclick='invSendArg("Faltam provas suficientes")'>Faltam provas</button>
+              <button class='inv-arg-btn' onclick='invSendArg("O direito de defesa foi ignorado")'>Direito de defesa</button>
+              <button class='inv-arg-btn' onclick='invSendArg("A evidência foi contestada validamente")'>Evidência contestada</button>
+            </div>
+            <div style='display:flex;gap:8px;margin-top:8px'>
+              <input id='inv-chat-text' class='inv-input' placeholder='Digite sua análise...' maxlength='150' onkeydown='if(event.key==="Enter")invSendChat()'>
+              <button class='inv-btn-ghost' onclick='invSendChat()'>Enviar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Right: Players + Skills + Log -->
+      <div class='inv-right-panel'>
+        <!-- Timer -->
+        <div class='inv-timer-box' id='inv-inv-timer'></div>
+        <!-- My Role -->
+        <div id='inv-my-role-card' class='inv-card inv-role-display'></div>
+        <!-- Players -->
+        <div class='inv-card'>
+          <h4 style='margin-bottom:10px;font-size:.88rem;color:var(--muted)'>👥 JOGADORES</h4>
+          <div id='inv-players-list'></div>
+        </div>
+        <!-- Actions Log -->
+        <div class='inv-card'>
+          <h4 style='margin-bottom:10px;font-size:.88rem;color:var(--muted)'>⚡ LOG DE AÇÕES</h4>
+          <div id='inv-actions-log' class='inv-actions-log'></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VOTACAO SCREEN -->
+  <div id='inv-screen-votacao' class='inv-screen hidden'>
+    <div class='inv-vote-container'>
+      <div class='inv-card' style='text-align:center;margin-bottom:14px'>
+        <div class='inv-countdown-ring urgent' id='inv-vote-countdown'>45</div>
+        <h2 style='margin-top:10px'>⚖️ Hora da Decisão</h2>
+        <p style='color:var(--muted);font-size:.85rem'>Baseado nas evidências analisadas, como você decide?</p>
+      </div>
+      <div class='inv-vote-grid'>
+        <!-- Violacao -->
+        <div class='inv-card inv-vote-section'>
+          <h3>❓ Houve violação constitucional?</h3>
+          <div class='inv-vote-options'>
+            <button class='inv-vote-btn' id='vbtn-sim' onclick='invSetVote("violacao",true)'>✅ SIM — Houve violação</button>
+            <button class='inv-vote-btn' id='vbtn-nao' onclick='invSetVote("violacao",false)'>❌ NÃO — Não houve violação</button>
+          </div>
+        </div>
+        <!-- Artigo -->
+        <div class='inv-card inv-vote-section'>
+          <h3>📜 Qual artigo foi violado?</h3>
+          <div class='inv-artigo-options' id='inv-artigo-options'>
+            <button class='inv-vote-btn small' onclick='invSetVote("artigo","Art. 5º, IV")'>Art. 5º, IV — Liberdade de expressão</button>
+            <button class='inv-vote-btn small' onclick='invSetVote("artigo","Art. 5º, X")'>Art. 5º, X — Privacidade e honra</button>
+            <button class='inv-vote-btn small' onclick='invSetVote("artigo","Art. 5º, XI")'>Art. 5º, XI — Inviolabilidade domicílio</button>
+            <button class='inv-vote-btn small' onclick='invSetVote("artigo","Art. 5º, III")'>Art. 5º, III — Dignidade humana</button>
+            <button class='inv-vote-btn small' onclick='invSetVote("artigo","Art. 5º, LV")'>Art. 5º, LV — Contraditório e defesa</button>
+            <button class='inv-vote-btn small' onclick='invSetVote("artigo","Art. 5º, IX")'>Art. 5º, IX — Livre manifestação</button>
+            <button class='inv-vote-btn small' onclick='invSetVote("artigo","Art. 5º caput")'>Art. 5º caput — Igualdade</button>
+            <button class='inv-vote-btn small' onclick='invSetVote("artigo","Art. 37")'>Art. 37 — Administração pública</button>
+            <button class='inv-vote-btn small' onclick='invSetVote("artigo","Art. 7º")'>Art. 7º — Direitos trabalhistas</button>
+          </div>
+        </div>
+        <!-- Culpado -->
+        <div class='inv-card inv-vote-section'>
+          <h3>🎯 Quem é o responsável?</h3>
+          <div class='inv-culpado-options' id='inv-culpado-options'></div>
+        </div>
+      </div>
+      <div class='inv-vote-summary' id='inv-vote-summary' style='display:none'></div>
+      <button class='inv-btn-primary' id='inv-btn-submit-vote' onclick='invSubmitVote()' style='margin-top:16px;width:100%;opacity:.4' disabled>Confirmar Voto ⚖️</button>
+    </div>
+  </div>
+
+  <!-- RESULTADO SCREEN -->
+  <div id='inv-screen-resultado' class='inv-screen hidden'>
+    <div class='inv-resultado-container'>
+      <div class='inv-card inv-resultado-hero'>
+        <div style='font-size:3rem;margin-bottom:10px'>🏛️</div>
+        <h2>Veredicto Final</h2>
+        <div class='inv-resposta-correta' id='inv-resposta-correta'></div>
+      </div>
+      <div class='inv-card' style='margin-top:14px'>
+        <h3>🏆 Ranking da Partida</h3>
+        <div id='inv-resultado-ranking'></div>
+      </div>
+      <div class='inv-card' style='margin-top:14px'>
+        <h3>📄 Análise do Caso</h3>
+        <div id='inv-resultado-analise'></div>
+      </div>
+      <div style='display:flex;gap:10px;margin-top:16px;flex-wrap:wrap'>
+        <button class='inv-btn-primary' onclick='invPlayAgain()'>🔄 Jogar Novamente</button>
+        <button class='inv-btn-secondary' onclick='closeInvestigacao()'>← Voltar ao Menu</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+<!-- ── END INVESTIGATION OVERLAY ── -->
+
 <script id='q-data' type='application/json'>__QUESTIONS__</script>
 <script id='l-data' type='application/json'>__LEVELS__</script>
 <script>
 'use strict';
 
-/* ══════════════════════════════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    ACCOUNT SYSTEM
-   ══════════════════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
 const AVATARS_AUTH = [
   {id:'estudante', icon:'📚', name:'Estudante'},
-  {id:'advogado',  icon:'👨‍⚖️', name:'Advogado'},
-  {id:'juiza',     icon:'👩‍⚖️', name:'Juiza'},
-  {id:'ministra',  icon:'⚖️',  name:'Ministra'},
-  {id:'professor', icon:'🧑‍🏫', name:'Professor'},
-  {id:'guardiao',  icon:'🛡️', name:'Guardiao'},
+  {id:'advogado',  icon:'👨â€⚖ï¸', name:'Advogado'},
+  {id:'juiza',     icon:'👩â€⚖ï¸', name:'Juiza'},
+  {id:'ministra',  icon:'⚖ï¸',  name:'Ministra'},
+  {id:'professor', icon:'🧑â€ðŸ«', name:'Professor'},
+  {id:'guardiao',  icon:'🛡ï¸', name:'Guardiao'},
 ];
 
 let currentUser = null;   // {username, avatar, guest}
@@ -1353,7 +2279,7 @@ async function doLogin() {
   } catch(e) {
     showAuthError('login-error', e.message === 'not_found' ? 'Conta nao encontrada.' : 'Erro de conexao.');
   } finally {
-    btn.disabled = false; btn.textContent = 'Entrar na Arena ⚔️';
+    btn.disabled = false; btn.textContent = 'Entrar na Arena ⚔ï¸';
   }
 }
 
@@ -1389,7 +2315,7 @@ async function doRegister() {
   } catch(e) {
     showAuthError('reg-error','Erro ao criar conta. Tente novamente.');
   } finally {
-    btn.disabled = false; btn.textContent = 'Criar minha conta 🏛️';
+    btn.disabled = false; btn.textContent = 'Criar minha conta ðŸ›ï¸';
   }
 }
 
@@ -1578,11 +2504,11 @@ function computeMedals() {
 
   // 3. Remedios perfeito
   if (stats[3] && stats[3].total > 0 && stats[3].ok === stats[3].total)
-    medals.push({id:'rem', name:'⚖️ Mestre dos Remedios', desc:'Dominou todos os remedios constitucionais.'});
+    medals.push({id:'rem', name:'⚖ï¸ Mestre dos Remedios', desc:'Dominou todos os remedios constitucionais.'});
 
   // 4. Casos praticos
   if (stats[5] && stats[5].ok >= 2)
-    medals.push({id:'caso', name:'🏛️ Caso Concreto', desc:'Bom desempenho nos casos praticos.'});
+    medals.push({id:'caso', name:'ðŸ›ï¸ Caso Concreto', desc:'Bom desempenho nos casos praticos.'});
 
   // 5. Sequencia
   if (Object.values(stats).some(x => x.bestStreak >= 4))
@@ -1598,11 +2524,11 @@ function computeMedals() {
 
   // 8. Iniciante
   if (allOk >= 1 && allTot >= 1 && !medals.some(m=>m.id==='first'))
-    medals.push({id:'first', name:'⭐ Primeiro Acerto', desc:'Acertou a primeira questao!'});
+    medals.push({id:'first', name:'â­ Primeiro Acerto', desc:'Acertou a primeira questao!'});
 
   // 9. Velocista (menos de 2 min)
   if (sec > 0 && sec <= 120 && allTot >= 15)
-    medals.push({id:'fast', name:'⏱️ Velocista', desc:'Terminou em menos de 2 minutos!'});
+    medals.push({id:'fast', name:'â±ï¸ Velocista', desc:'Terminou em menos de 2 minutos!'});
 
   // 10. Sequencia longa
   if (Object.values(stats).some(x => x.bestStreak >= 8))
@@ -1610,7 +2536,7 @@ function computeMedals() {
 
   // 11. Modo infinito longe
   if (gameMode === 'infinite' && allOk >= 20)
-    medals.push({id:'infinite20', name:'♾️ Maratonista', desc:'20+ acertos no modo infinito!'});
+    medals.push({id:'infinite20', name:'♾ï¸ Maratonista', desc:'20+ acertos no modo infinito!'});
 
   // 12. Speedrun master
   if (gameMode === 'speedrun' && allOk >= 10)
@@ -1622,7 +2548,7 @@ function computeMedals() {
 
   // 14. Veterano (10+ partidas)
   if (profile.gamesPlayed >= 10)
-    medals.push({id:'veteran', name:'🎖️ Veterano', desc:'10+ partidas jogadas!'});
+    medals.push({id:'veteran', name:'🎖ï¸ Veterano', desc:'10+ partidas jogadas!'});
 
   // 15. Streak diario
   if (profile.dailyStreak >= 5)
@@ -1658,7 +2584,7 @@ function showMedalToast(medal, delayMs) {
   setTimeout(() => {
     const t = document.createElement('div');
     t.className = 'm-toast';
-    t.innerHTML = `<div class='m-toast-head'>🏅 Medalha desbloqueada!</div>
+    t.innerHTML = `<div class='m-toast-head'>ðŸ… Medalha desbloqueada!</div>
                    <div class='m-toast-name'>${medal.name}</div>
                    <div class='m-toast-desc'>${medal.desc}</div>`;
     ui.medalToasts.appendChild(t);
@@ -1725,7 +2651,7 @@ function setPhase(phase, seconds) {
     ui.hudTimer.textContent   = '📖 ' + seconds + 's';
   } else if (phase === 'answering') {
     ui.phaseBar.className  = 'phase-bar answering';
-    ui.phaseLabel.textContent = '⏳ Escolha sua resposta';
+    ui.phaseLabel.textContent = 'â³ Escolha sua resposta';
     ui.hudTimer.textContent   = seconds + 's';
   } else if (phase === 'done-ok') {
     ui.phaseBar.className  = 'phase-bar done-ok';
@@ -1734,12 +2660,12 @@ function setPhase(phase, seconds) {
     ui.hudTimer.textContent   = '--';
   } else if (phase === 'done-no') {
     ui.phaseBar.className  = 'phase-bar done-no';
-    ui.phaseLabel.textContent = '❌ Resposta incorreta';
+    ui.phaseLabel.textContent = 'âŒ Resposta incorreta';
     ui.phaseCd.textContent = '';
     ui.hudTimer.textContent   = '--';
   } else if (phase === 'done-time') {
     ui.phaseBar.className  = 'phase-bar done-no';
-    ui.phaseLabel.textContent = '⏰ Tempo esgotado';
+    ui.phaseLabel.textContent = 'â° Tempo esgotado';
     ui.phaseCd.textContent = '';
     ui.hudTimer.textContent   = '--';
   }
@@ -1778,16 +2704,16 @@ function renderQuestion() {
   const pts = Math.round(lv.base * mult);
   ui.counter.textContent = 'Pergunta ' + (state.idx+1) + '/' + state.deck.length;
   let ptsTxt = '+' + pts + ' pts';
-  if (isGoldenQuestion(q)) ptsTxt = '⭐ ' + ptsTxt + ' (3x)';
+  if (isGoldenQuestion(q)) ptsTxt = 'â­ ' + ptsTxt + ' (3x)';
   if (isBossQuestion(q)) ptsTxt = '🧠 BOSS ' + ptsTxt;
   if (furyActive) ptsTxt += ' 🔥x2';
   ui.ptsPill.textContent = ptsTxt;
 
   // Question text with badges
   let qPrefix = '';
-  if (isGoldenQuestion(q)) qPrefix = '<span class="golden-badge">⭐ Questao Dourada</span> ';
+  if (isGoldenQuestion(q)) qPrefix = '<span class="golden-badge">â­ Questao Dourada</span> ';
   if (isBossQuestion(q)) qPrefix = '<span class="boss-badge">🧠 Pergunta Chefe</span> ';
-  if (q.type === 'fill') qPrefix += '<span class="study-badge">✍️ Preencher</span> ';
+  if (q.type === 'fill') qPrefix += '<span class="study-badge">âœï¸ Preencher</span> ';
   ui.qtext.innerHTML = qPrefix + q.q;
 
   // Help buttons
@@ -1911,7 +2837,7 @@ async function doAnswer(sel, timedOut) {
 
   state.lvStats[q.level].total++;
   let isCorrect = false;
-  let fbTitle = timedOut ? '⏰ Tempo esgotado' : WRONG_REACTIONS[Math.floor(Math.random() * WRONG_REACTIONS.length)];
+  let fbTitle = timedOut ? 'â° Tempo esgotado' : WRONG_REACTIONS[Math.floor(Math.random() * WRONG_REACTIONS.length)];
   let fbBody  = q.exp;
 
   // Anti-guess check
@@ -2004,7 +2930,7 @@ async function doAnswer(sel, timedOut) {
   const narr = getNarratorComment(isCorrect, q.diff || 'normal');
   const narrDiv = document.createElement('div');
   narrDiv.className = 'narrator-box';
-  narrDiv.innerHTML = '<span class="nr-icon">🎙️</span>' + narr;
+  narrDiv.innerHTML = '<span class="nr-icon">🎙ï¸</span>' + narr;
   ui.feedbackBox.appendChild(narrDiv);
 
   // Phase indicator
@@ -2150,7 +3076,7 @@ function useSkip() {
   state.used.skip = true;
   if (ui.btnSkip) ui.btnSkip.disabled = true;
   playSound('skip');
-  showAssist('⏭ Pergunta pulada! Sem pontos.');
+  showAssist('â­ Pergunta pulada! Sem pontos.');
   state.answered = true;
   clearInterval(state.ticker);
   state.wrongQs.push(state.deck[state.idx]);
@@ -2163,7 +3089,7 @@ function useExtraTime() {
   state.used.extraTime = true;
   if (ui.btnExtraTime) ui.btnExtraTime.disabled = true;
   state.timeLeft += 15;
-  showAssist('⏱ +15 segundos adicionados!');
+  showAssist('â± +15 segundos adicionados!');
   playSound('tick');
 }
 
@@ -2177,7 +3103,7 @@ function renderRanking(list) {
   ui.rankingList.innerHTML = sorted.slice(0,12).map((e,i) => `
     <div class='rank-item' style='animation-delay:${i*0.06}s'>
       <span class='rk-name'>${icons[i]||((i+1)+'.')} ${e.name} — ${e.score} pts</span>
-      <span class='rk-meta'>⏱ ${fmtTime(e.completion_seconds)} | ✓ ${e.correct_answers}/${e.total_questions}</span>
+      <span class='rk-meta'>â± ${fmtTime(e.completion_seconds)} | ✓ ${e.correct_answers}/${e.total_questions}</span>
       <span class='rk-sub'>${e.title}${e.medals&&e.medals.length?' · '+e.medals.join(', '):''}</span>
       <span class='rk-sub'>${e.saved_at}</span>
     </div>
@@ -2289,7 +3215,7 @@ function renderLevelCards() {
     <div class='level-card'>
       <span class='chip'>Nivel ${lv.id}</span>
       <h3>${lv.name}</h3>
-      <p>${QPL} questoes sorteadas<br>+${lv.base} pts base por acerto<br>📖 ${lv.read}s leitura + ⏳ ${lv.answer}s resposta</p>
+      <p>${QPL} questoes sorteadas<br>+${lv.base} pts base por acerto<br>📖 ${lv.read}s leitura + â³ ${lv.answer}s resposta</p>
     </div>
   `).join('');
 }
@@ -2329,29 +3255,29 @@ ui.btnInstall.addEventListener('click', async () => {
 
 
 
-/* ══════════════════════════════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    NEW SYSTEMS - XP, Levels, Modes, Sound, Themes, etc.
-   ══════════════════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
 /* ── PLAYER LEVELS ─────────────────────────────────────────────────── */
 const PLAYER_LEVELS = [
   {level:1,  xp:0,    title:'Estudante',               icon:'📚'},
-  {level:2,  xp:100,  title:'Estagiario Juridico',     icon:'📝'},
+  {level:2,  xp:100,  title:'Estagiario Juridico',     icon:'ðŸ“'},
   {level:3,  xp:250,  title:'Bacharel em Direito',     icon:'🎓'},
-  {level:5,  xp:500,  title:'Jurista',                  icon:'⚖️'},
-  {level:8,  xp:1000, title:'Magistrado',               icon:'👨‍⚖️'},
-  {level:10, xp:1500, title:'Desembargador',            icon:'🏛️'},
-  {level:15, xp:2500, title:'Ministro do STF',          icon:'🏆'},
+  {level:5,  xp:500,  title:'Jurista',                  icon:'⚖ï¸'},
+  {level:8,  xp:1000, title:'Magistrado',               icon:'👨â€⚖ï¸'},
+  {level:10, xp:1500, title:'Desembargador',            icon:'ðŸ›ï¸'},
+  {level:15, xp:2500, title:'Ministro do STF',          icon:'ðŸ†'},
   {level:20, xp:4000, title:'Guardiao da Constituicao', icon:'👑'},
 ];
 
 const AVATARS = [
   {id:'estudante', icon:'📚', name:'Estudante'},
-  {id:'advogado',  icon:'👨‍⚖️', name:'Advogado'},
-  {id:'juiza',     icon:'👩‍⚖️', name:'Juiza'},
-  {id:'ministra',  icon:'⚖️',  name:'Ministra'},
-  {id:'professor', icon:'🧑‍🏫', name:'Professor'},
-  {id:'guardiao',  icon:'🛡️', name:'Guardiao'},
+  {id:'advogado',  icon:'👨â€⚖ï¸', name:'Advogado'},
+  {id:'juiza',     icon:'👩â€⚖ï¸', name:'Juiza'},
+  {id:'ministra',  icon:'⚖ï¸',  name:'Ministra'},
+  {id:'professor', icon:'🧑â€ðŸ«', name:'Professor'},
+  {id:'guardiao',  icon:'🛡ï¸', name:'Guardiao'},
 ];
 
 const THEMES_MAP = {
@@ -2370,19 +3296,19 @@ const UNLOCKS = [
 
 const CORRECT_REACTIONS = [
   '🎉 Excelente interpretacao constitucional!',
-  '⚖️ Perfeito! Fundamentacao juridica impecavel!',
-  '🏛️ Nem o STF discordaria!',
+  '⚖ï¸ Perfeito! Fundamentacao juridica impecavel!',
+  'ðŸ›ï¸ Nem o STF discordaria!',
   '📜 Conhecimento constitucional solido!',
   '🎯 Precisao juridica impressionante!',
-  '⭐ Resposta digna de um constitucionalista!',
+  'â­ Resposta digna de um constitucionalista!',
   '🔥 Voce domina o texto constitucional!',
   '💎 Interpretacao constitucional impecavel!',
 ];
 
 const WRONG_REACTIONS = [
-  '⚖️ Quase! Veja o fundamento juridico.',
+  '⚖ï¸ Quase! Veja o fundamento juridico.',
   '📖 Boa tentativa! Revise esse artigo.',
-  '🔍 Atencao ao texto constitucional.',
+  'ðŸ” Atencao ao texto constitucional.',
   '📚 Oportunidade de aprendizado!',
   '💡 A Constituicao surpreende as vezes.',
 ];
@@ -2616,7 +3542,7 @@ let answerStartTime = 0;
 
 function checkAntiGuess(answerTimeMs) {
   if (answerTimeMs < 1500 && state.phase === 'answering') {
-    return { penalty: true, multiplier: 0.5, msg: '⚠️ Resposta muito rapida! Pontuacao reduzida pela metade.' };
+    return { penalty: true, multiplier: 0.5, msg: '⚠ï¸ Resposta muito rapida! Pontuacao reduzida pela metade.' };
   }
   return { penalty: false, multiplier: 1 };
 }
@@ -2722,7 +3648,7 @@ function openSettings() {
   modal.className = 'modal-overlay';
   modal.innerHTML = '<div class="modal-content">' +
     '<button class="modal-close" onclick="closeSettings()">✕</button>' +
-    '<h2>⚙️ Configuracoes</h2>' +
+    '<h2>⚙ï¸ Configuracoes</h2>' +
 
     '<div class="setting-group"><label>Tema visual' +
     (isUnlocked('themes') ? '' : ' 🔒 (Nivel 3)') + '</label>' +
@@ -2796,10 +3722,10 @@ function checkEasterEggs() {
   if (!el) return;
 
   if (allOk === allTot && allTot >= 15) {
-    el.textContent = '🏛️ "Voce e digno do Supremo. A Constituicao esta em boas maos." — Guardiao da Constituicao';
+    el.textContent = 'ðŸ›ï¸ "Voce e digno do Supremo. A Constituicao esta em boas maos." — Guardiao da Constituicao';
     el.classList.remove('hidden');
   } else if (allOk === allTot && allTot >= 5) {
-    el.textContent = '⚖️ "Interpretacao constitucional impecavel. Nem o STF discordaria."';
+    el.textContent = '⚖ï¸ "Interpretacao constitucional impecavel. Nem o STF discordaria."';
     el.classList.remove('hidden');
   } else if (state.score >= 250) {
     el.textContent = '👑 "Poucos alcancam esse patamar. Voce honra a Constituicao."';
@@ -2863,9 +3789,9 @@ function stopSpeedrunTimer() {
 
 
 
-/* ══════════════════════════════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    V2 SYSTEMS – Lives, Fury, Golden, Boss, Particles, Skills, Coins, etc.
-   ══════════════════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
 /* ── LIVES SYSTEM ──────────────────────────────────────────────────── */
 let lives = 3;
@@ -2942,7 +3868,7 @@ function showSuspense() {
     const el = document.getElementById('suspense-overlay');
     if (!el) { resolve(); return; }
     el.className = 'suspense-overlay';
-    el.innerHTML = '<div class="suspense-text">⚖️ Processando resposta...</div>';
+    el.innerHTML = '<div class="suspense-text">⚖ï¸ Processando resposta...</div>';
     setTimeout(() => { el.className = 'hidden'; resolve(); }, 700);
   });
 }
@@ -3065,7 +3991,7 @@ function showScoreExplosion(pts) {
 function initAnimatedBG() {
   const container = document.getElementById('bg-symbols');
   if (!container) return;
-  const symbols = ['⚖️','📜','🏛️','📚','🔨','⭐','🗽','📖','🎓','👨‍⚖️','🏆','🛡️'];
+  const symbols = ['⚖ï¸','📜','ðŸ›ï¸','📚','🔨','â­','🗽','📖','🎓','👨â€⚖ï¸','ðŸ†','🛡ï¸'];
   for (let i = 0; i < 15; i++) {
     const sym = document.createElement('div');
     sym.className = 'bg-sym';
@@ -3123,10 +4049,10 @@ function showEpicIntro() {
   return new Promise(resolve => {
     el.className = 'epic-intro';
     el.innerHTML =
-      '<div class="ei-icon">⚖️</div>' +
+      '<div class="ei-icon">⚖ï¸</div>' +
       '<div class="ei-title">Voce esta prestes a entrar na Arena Constitucional</div>' +
       '<div class="ei-sub">Defenda a Constituicao. Prove seu conhecimento juridico. Torne-se o Guardiao.</div>' +
-      '<button class="btn primary ei-btn" id="btn-enter-arena">Entrar na Arena ⚔️</button>';
+      '<button class="btn primary ei-btn" id="btn-enter-arena">Entrar na Arena ⚔ï¸</button>';
     document.getElementById('btn-enter-arena').addEventListener('click', () => {
       el.style.animation = 'fadeIn .3s ease reverse forwards';
       playSound('levelup');
@@ -3172,7 +4098,7 @@ const SKILLS = [
   {id:'fast', name:'Jurista Rapido', icon:'⚡', desc:'+10s extra em cada pergunta', cost:100, effect:'extraTime'},
   {id:'memory', name:'Memoria Fotografica', icon:'🧠', desc:'Elimina 1 alternativa automaticamente', cost:150, effect:'autoElim'},
   {id:'intuition', name:'Intuicao Juridica', icon:'💡', desc:'Dica automatica no inicio', cost:200, effect:'autoHint'},
-  {id:'shield', name:'Escudo Constitucional', icon:'🛡️', desc:'+1 vida extra por partida', cost:250, effect:'extraLife'},
+  {id:'shield', name:'Escudo Constitucional', icon:'🛡ï¸', desc:'+1 vida extra por partida', cost:250, effect:'extraLife'},
   {id:'double', name:'Dobro ou Nada', icon:'💰', desc:'Moedas em dobro por partida', cost:300, effect:'doubleCoins'},
   {id:'scholar', name:'Erudito', icon:'📚', desc:'+25% XP por partida', cost:350, effect:'bonusXP'},
 ];
@@ -3257,10 +4183,10 @@ function applySkillEffects() {
 /* ── CONSTITUTION MAP ──────────────────────────────────────────────── */
 const CONST_TOPICS = [
   {id:'teoria', name:'Teoria Constitucional', icon:'📜', levels:[1]},
-  {id:'individuais', name:'Direitos Individuais', icon:'🛡️', levels:[2]},
-  {id:'remedios', name:'Remedios Constitucionais', icon:'⚖️', levels:[3]},
-  {id:'sociais', name:'Direitos Sociais', icon:'🤝', levels:[4]},
-  {id:'praticos', name:'Casos Praticos', icon:'🏛️', levels:[5]},
+  {id:'individuais', name:'Direitos Individuais', icon:'🛡ï¸', levels:[2]},
+  {id:'remedios', name:'Remedios Constitucionais', icon:'⚖ï¸', levels:[3]},
+  {id:'sociais', name:'Direitos Sociais', icon:'ðŸ¤', levels:[4]},
+  {id:'praticos', name:'Casos Praticos', icon:'ðŸ›ï¸', levels:[5]},
 ];
 
 function renderConstitutionMap() {
@@ -3305,18 +4231,18 @@ function updateTopicStats(level, correct) {
 const NARRATOR_COMMENTS = {
   correct_easy: [
     '📖 O STF consolidou esse entendimento em diversas decisoes.',
-    '⚖️ Essa e uma questao basilar do direito constitucional brasileiro.',
-    '🏛️ Importante fundamento para qualquer operador do direito.',
+    '⚖ï¸ Essa e uma questao basilar do direito constitucional brasileiro.',
+    'ðŸ›ï¸ Importante fundamento para qualquer operador do direito.',
   ],
   correct_hard: [
     '🎓 Poucos dominam esse tema com tanta clareza. Parabens!',
-    '⚖️ Esse e um tema complexo que exige profundo conhecimento constitucional.',
-    '👨‍⚖️ O proprio STF ja debateu longamente essa questao.',
+    '⚖ï¸ Esse e um tema complexo que exige profundo conhecimento constitucional.',
+    '👨â€⚖ï¸ O proprio STF ja debateu longamente essa questao.',
   ],
   wrong: [
     '📚 Revise esse tema. E fundamental para o direito constitucional.',
     '💡 Esse artigo e frequentemente cobrado em concursos e provas.',
-    '🔍 Aprofunde-se nessa materia. A Constituicao tem nuances importantes.',
+    'ðŸ” Aprofunde-se nessa materia. A Constituicao tem nuances importantes.',
   ],
 };
 
@@ -3348,7 +4274,7 @@ function getDifficultyMultiplier(q) {
 
 /* ── STREAK MILESTONES ─────────────────────────────────────────────── */
 const STREAK_MILESTONES = [
-  {days:3, reward:'medal', desc:'🏅 Medalha de Consistencia!', coins:20},
+  {days:3, reward:'medal', desc:'ðŸ… Medalha de Consistencia!', coins:20},
   {days:5, reward:'avatar', desc:'🎭 Avatar especial desbloqueado!', coins:50},
   {days:7, reward:'theme', desc:'🎨 Tema exclusivo desbloqueado!', coins:100},
   {days:14, reward:'title', desc:'👑 Titulo "Constitucionalista Dedicado"!', coins:200},
@@ -3439,7 +4365,7 @@ function doFillAnswer(isCorrect, q) {
   const narr = getNarratorComment(isCorrect, q.diff || 'normal');
   const narrDiv = document.createElement('div');
   narrDiv.className = 'narrator-box';
-  narrDiv.innerHTML = '<span class="nr-icon">🎙️</span>' + narr;
+  narrDiv.innerHTML = '<span class="nr-icon">🎙ï¸</span>' + narr;
   ui.feedbackBox.appendChild(narrDiv);
 
   refreshMedals();
@@ -3493,12 +4419,449 @@ document.getElementById('btn-sound').textContent = profile.soundEnabled ? '🔊'
     enterGame(sess);
   }
 })();
+
+/* ══════════════════════════════════════════════════════════════════════
+   INVESTIGATION GAME — COMPLETE MULTIPLAYER SYSTEM
+   ══════════════════════════════════════════════════════════════════════ */
+
+const INV = {
+  playerId: null,
+  roomId: null,
+  phase: null,
+  pollTimer: null,
+  lastState: null,
+  pendingVote: { violacao: null, artigo: null, culpado: null },
+  roleColors: {
+    icaro:'#3b82f6', natan:'#ef4444', luciano:'#f59e0b',
+    giovanna:'#8b5cf6', thalles:'#10b981', izabella:'#ec4899', dilerman:'#f97316'
+  },
+  phaseName: {
+    lobby:'Aguardando', intro:'Intro do Caso', investigacao:'Investigação',
+    debate:'Debate', votacao:'Votação', resultado:'Resultado'
+  },
+};
+
+function invGetPlayerId() {
+  if (INV.playerId) return INV.playerId;
+  let id = localStorage.getItem('inv_player_id');
+  if (!id) { id = 'P' + Math.random().toString(36).substr(2,10).toUpperCase(); localStorage.setItem('inv_player_id', id); }
+  INV.playerId = id;
+  return id;
+}
+
+function invGetPlayerName() {
+  const nameEl = document.getElementById('inv-player-name');
+  const name = nameEl?.value.trim() || (currentUser?.username) || 'Jogador';
+  return name || 'Jogador';
+}
+
+function openInvestigacao() {
+  invGetPlayerId();
+  document.getElementById('inv-overlay').classList.remove('hidden');
+  invShowScreen('lobby');
+  invRefreshRooms();
+}
+
+function closeInvestigacao() {
+  document.getElementById('inv-overlay').classList.add('hidden');
+  if (INV.pollTimer) { clearInterval(INV.pollTimer); INV.pollTimer = null; }
+  INV.roomId = null; INV.phase = null;
+}
+
+function invShowScreen(name) {
+  ['lobby','waiting','intro','investigacao','votacao','resultado'].forEach(s => {
+    const el = document.getElementById('inv-screen-' + s);
+    if (el) el.classList.toggle('hidden', s !== name);
+  });
+}
+
+async function invRefreshRooms() {
+  const list = document.getElementById('inv-rooms-list');
+  if (!list) return;
+  try {
+    const r = await fetch('/api/inv/rooms');
+    const rooms = await r.json();
+    if (!rooms.length) { list.innerHTML = "<div class='inv-empty'>Nenhuma sala aberta. Seja o primeiro!</div>"; return; }
+    list.innerHTML = rooms.map(rm => `
+      <div class='inv-room-item'>
+        <div><div style='font-weight:800;color:#fff;font-size:.9rem'>📁 ${rm.case}</div>
+        <div style='font-size:.75rem;color:#6b7280;margin-top:2px'>👥 ${rm.players} jogador(es) • ID: ${rm.id}</div></div>
+        <button class='inv-room-join-btn' onclick='invJoinRoomId("${rm.id}")'>Entrar</button>
+      </div>`).join('');
+  } catch(e) { list.innerHTML = "<div class='inv-empty'>Erro ao carregar salas.</div>"; }
+}
+
+async function invCreateRoom() {
+  const name = invGetPlayerName();
+  if (!name || name.length < 2) { alert('Digite seu nome!'); return; }
+  try {
+    const r = await fetch('/api/inv/join', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ player_id: invGetPlayerId(), player_name: name }) });
+    const data = await r.json();
+    if (data.room_id) { INV.roomId = data.room_id; invEnterWaiting(); }
+  } catch(e) { alert('Erro ao criar sala.'); }
+}
+
+async function invJoinRoom() {
+  const code = document.getElementById('inv-room-code')?.value.trim().toUpperCase();
+  if (!code) { alert('Digite o código da sala!'); return; }
+  await invJoinRoomId(code);
+}
+
+async function invJoinRoomId(roomId) {
+  const name = invGetPlayerName() || ('Jogador_' + Math.floor(Math.random()*999));
+  try {
+    const r = await fetch('/api/inv/join', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ player_id: invGetPlayerId(), player_name: name, room_id: roomId }) });
+    const data = await r.json();
+    if (data.room_id) { INV.roomId = data.room_id; invEnterWaiting(); }
+    else alert('Sala não encontrada ou cheia.');
+  } catch(e) { alert('Erro ao entrar na sala.'); }
+}
+
+function invEnterWaiting() {
+  invShowScreen('waiting');
+  document.getElementById('inv-my-room-code').textContent = INV.roomId;
+  if (INV.pollTimer) clearInterval(INV.pollTimer);
+  INV.pollTimer = setInterval(invPoll, 2000);
+  invPoll();
+}
+
+async function invPoll() {
+  if (!INV.roomId) return;
+  try {
+    const r = await fetch(`/api/inv/state?room_id=${INV.roomId}&player_id=${invGetPlayerId()}`);
+    if (!r.ok) return;
+    const state = await r.json();
+    INV.lastState = state;
+    invRenderState(state);
+  } catch(e) {}
+}
+
+function invRenderState(state) {
+  const phase = state.phase;
+  // Update header
+  const phaseEl = document.getElementById('inv-phase-indicator');
+  if (phaseEl) phaseEl.textContent = INV.phaseName[phase] || phase;
+  const timerEl = document.getElementById('inv-global-timer');
+  if (timerEl && state.time_left != null) {
+    timerEl.textContent = invFmtTime(state.time_left);
+    timerEl.style.color = state.time_left < 15 ? '#ef4444' : '#a78bfa';
+  } else if (timerEl) timerEl.textContent = '';
+
+  // Phase transitions
+  if (phase !== INV.phase) {
+    INV.phase = phase;
+    if (phase === 'intro') invShowScreen('intro');
+    else if (phase === 'investigacao') { invShowScreen('investigacao'); invRenderMyRole(state); }
+    else if (phase === 'debate') { invShowScreen('investigacao'); invTab('chat'); }
+    else if (phase === 'votacao') { invShowScreen('votacao'); invSetupVoteOptions(state); }
+    else if (phase === 'resultado') invShowScreen('resultado');
+  }
+
+  // Per-phase rendering
+  if (phase === 'lobby' || phase === 'waiting' || INV.phase === null) invRenderWaiting(state);
+  if (phase === 'intro') invRenderIntro(state);
+  if (phase === 'investigacao' || phase === 'debate') invRenderInvestigation(state);
+  if (phase === 'votacao') invRenderVotacao(state);
+  if (phase === 'resultado') invRenderResultado(state);
+}
+
+function invRenderWaiting(state) {
+  const cnt = document.getElementById('inv-waiting-count');
+  if (cnt) cnt.textContent = state.players.length;
+  const caseEl = document.getElementById('inv-waiting-case');
+  if (caseEl) caseEl.textContent = state.case?.title || '';
+  const playersEl = document.getElementById('inv-waiting-players');
+  if (playersEl) playersEl.innerHTML = state.players.map(p =>
+    `<div class='inv-waiting-player${p.ready?" ready":""}'>
+      <span class='inv-player-avatar'>🧑‍⚖️</span>
+      <span class='inv-player-name'>${p.name}${p.id===invGetPlayerId()?' (você)':''}</span>
+      <span class='inv-player-status${p.ready?" ready":""}'>${p.ready?'✅ Pronto':'⏳ Aguardando'}</span>
+    </div>`).join('');
+}
+
+function invRenderIntro(state) {
+  const t = document.getElementById('inv-intro-title');
+  const h = document.getElementById('inv-intro-historia');
+  const e = document.getElementById('inv-intro-envolvidos');
+  if (t) t.textContent = state.case.title;
+  if (h) h.textContent = state.case.historia;
+  if (e) e.innerHTML = (state.case.envolvidos||[]).map(ev => `<span class='inv-envolvido-chip'>${ev}</span>`).join('');
+  const cd = document.getElementById('inv-intro-countdown');
+  if (cd && state.time_left != null) {
+    cd.textContent = Math.ceil(state.time_left);
+    cd.classList.toggle('urgent', state.time_left < 10);
+  }
+  // Show role if available
+  const roleReveal = document.getElementById('inv-role-reveal');
+  if (roleReveal && state.my_role) {
+    roleReveal.classList.remove('hidden');
+    const col = INV.roleColors[state.my_role.id] || '#8b5cf6';
+    roleReveal.style.background = `linear-gradient(135deg,${col}22,${col}08)`;
+    roleReveal.style.border = `1px solid ${col}40`;
+    roleReveal.innerHTML = `
+      <div style='font-size:2.5rem;margin-bottom:8px'>${state.my_role.icon}</div>
+      <div style='font-size:.75rem;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:${col};margin-bottom:6px'>Seu Papel</div>
+      <div style='font-size:1.2rem;font-weight:900;color:#fff;margin-bottom:4px'>${state.my_role.nome}</div>
+      <div style='font-size:.82rem;color:#9ca3af;margin-bottom:12px'>${state.my_role.titulo}</div>
+      <div style='font-size:.83rem;color:#c8c8d8;line-height:1.6;text-align:left;padding:10px;background:rgba(255,255,255,.03);border-radius:10px;border:1px solid rgba(255,255,255,.08)'>${state.my_role.desc}</div>`;
+  }
+}
+
+function invRenderMyRole(state) {
+  const el = document.getElementById('inv-my-role-card');
+  if (!el || !state.my_role) return;
+  const r = state.my_role;
+  const col = INV.roleColors[r.id] || '#8b5cf6';
+  el.style.background = `linear-gradient(135deg,${col}18,${col}06)`;
+  el.style.borderColor = `${col}40`;
+  // Find my player
+  const me = state.players.find(p => p.id === invGetPlayerId());
+  const used = me?.actions_used || [];
+  const habs = Object.entries(r.habilidades || {});
+  el.innerHTML = `
+    <div style='font-size:2rem'>${r.icon}</div>
+    <div style='flex:1'>
+      <div class='inv-role-name'>${r.nome}</div>
+      <div class='inv-role-title' style='color:${col}'>${r.titulo}</div>
+      <div style='margin-top:10px;display:grid;gap:5px'>
+        ${habs.map(([key, hab]) => {
+          const isUsed = used.includes(key);
+          const isUltimate = hab.uses === 1;
+          return `<button class='inv-skill-btn' onclick='invUseSkill("${key}")' ${isUsed && isUltimate?'disabled':''}>
+            ${isUltimate?'⚡ ':''}${hab.nome} ${isUltimate?'<span class=\'inv-skill-cd\'>(único)</span>':''}
+            ${isUsed && isUltimate?'<span class=\'inv-skill-cd\'>✓ Usado</span>':''}
+          </button>`;
+        }).join('')}
+      </div>
+    </div>`;
+}
+
+function invRenderInvestigation(state) {
+  // Case
+  const ct = document.getElementById('inv-case-title-small');
+  const ch = document.getElementById('inv-case-historia-small');
+  if (ct) ct.textContent = state.case.title;
+  if (ch) ch.textContent = state.case.historia;
+  const duvEl = document.getElementById('inv-case-duvidas');
+  if (duvEl) duvEl.innerHTML = '<div style="font-size:.8rem;color:#9ca3af;font-weight:700;margin-bottom:6px">💭 PONTOS DE DEBATE</div>' + (state.case.duvidas||[]).map(d => `<div class='inv-duvida-item'>❓ ${d}</div>`).join('');
+
+  // Evidences
+  const evList = document.getElementById('inv-evidence-list');
+  if (evList) {
+    const me = state.players.find(p => p.id === invGetPlayerId());
+    const myRole = state.my_role?.id;
+    evList.innerHTML = (state.evidences||[]).map(ev => {
+      const pct = Math.round(ev.peso * 100);
+      const col = pct > 60 ? '#ef4444' : pct > 30 ? '#f59e0b' : '#6b7280';
+      let btns = '';
+      if (myRole==='icaro') btns += `<button class='inv-ev-btn prim' onclick='invUseSkillOn("contestacao","${ev.id}")'>⚖️ Contestar</button>`;
+      if (myRole==='natan') btns += `<button class='inv-ev-btn danger' onclick='invUseSkillOn("marcar","${ev.id}")'>🔥 Marcar Crítica</button>`;
+      if (myRole==='icaro' && !me?.actions_used?.includes('duvida')) btns += `<button class='inv-ev-btn' onclick='invUseSkillOn("duvida","${ev.id}")'>❓ Dúvida Razoável</button>`;
+      return `<div class='inv-evidence-item${ev.contested?' contested':''}${ev.critical?' critical':''}'>
+        <div class='inv-ev-header'>
+          <span class='inv-ev-title'>${ev.titulo}</span>
+          <span class='inv-ev-peso' style='background:${col}22;border:1px solid ${col}44;color:${col}'>${pct}% peso</span>
+        </div>
+        <div class='inv-ev-desc'>${ev.descricao}</div>
+        ${btns?`<div class='inv-ev-actions'>${btns}</div>`:''}
+      </div>`;
+    }).join('') || '<div class="inv-empty">Carregando evidências...</div>';
+  }
+
+  // Players
+  const plList = document.getElementById('inv-players-list');
+  if (plList) plList.innerHTML = state.players.map(p => {
+    const col = INV.roleColors[p.role_id] || '#8b5cf6';
+    return `<div class='inv-player-row'>
+      <span>${p.role_icon||'👤'}</span>
+      <span style='font-size:.88rem;color:#fff;font-weight:700'>${p.name}${p.id===invGetPlayerId()?' (você)':''}</span>
+      ${p.role_name?`<span class='inv-player-row-role' style='background:${col}22;border:1px solid ${col}44;color:${col}'>${p.role_name}</span>`:''}
+    </div>`;
+  }).join('');
+
+  // Actions log
+  const logEl = document.getElementById('inv-actions-log');
+  if (logEl) logEl.innerHTML = (state.actions_log||[]).slice(-8).reverse().map(a =>
+    `<div class='inv-log-item'>${a.msg}</div>`).join('') || '<div class="inv-log-item" style="color:#4b5563">Sem ações ainda...</div>';
+
+  // Timer
+  const tmEl = document.getElementById('inv-inv-timer');
+  if (tmEl && state.time_left!=null) {
+    tmEl.innerHTML = `<div style='font-size:.72rem;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em'>${INV.phaseName[state.phase]||''}</div><div style='font-size:1.8rem;font-weight:900;color:${state.time_left<20?"#ef4444":"#a78bfa"}'>${invFmtTime(state.time_left)}</div>`;
+  }
+
+  // Chat
+  const chatEl = document.getElementById('inv-chat-messages');
+  if (chatEl) {
+    const msgs = state.messages || [];
+    chatEl.innerHTML = msgs.map(m => {
+      const col = INV.roleColors[m.role] || '#8b5cf6';
+      return `<div class='inv-chat-msg'>
+        <div class='inv-chat-sender' style='color:${col}'>${m.player}</div>
+        <div class='inv-chat-text'>${m.text}</div>
+      </div>`;
+    }).join('');
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+
+  // Tendency (Giovanna)
+  if (state.tendency) {
+    const logEl2 = document.getElementById('inv-actions-log');
+    if (logEl2) {
+      const tendDiv = `<div class='inv-log-item' style='color:#8b5cf6;border-bottom:1px solid rgba(139,92,246,.2)'>👁️ Tendência: SIM ${state.tendency.sim} | NÃO ${state.tendency.nao}</div>`;
+      logEl2.innerHTML = tendDiv + logEl2.innerHTML;
+    }
+  }
+}
+
+function invSetupVoteOptions(state) {
+  const culpadoEl = document.getElementById('inv-culpado-options');
+  if (culpadoEl) {
+    const envolvidos = state.case.envolvidos || [];
+    culpadoEl.innerHTML = envolvidos.map(ev =>
+      `<button class='inv-vote-btn' onclick='invSetVote("culpado","${ev.replace(/['"]/g,'')}")'>${ev}</button>`
+    ).join('');
+  }
+  INV.pendingVote = { violacao: null, artigo: null, culpado: null };
+}
+
+function invRenderVotacao(state) {
+  const cd = document.getElementById('inv-vote-countdown');
+  if (cd && state.time_left != null) {
+    cd.textContent = Math.ceil(state.time_left);
+    cd.classList.toggle('urgent', state.time_left < 15);
+  }
+  const waitingVotes = state.players.filter(p => !p.has_voted).length;
+  const summaryEl = document.getElementById('inv-vote-summary');
+  if (summaryEl) {
+    if (INV.pendingVote.violacao !== null || INV.pendingVote.artigo || INV.pendingVote.culpado) {
+      summaryEl.style.display = 'block';
+      summaryEl.innerHTML = `<strong>Seu voto:</strong><br>
+        ${INV.pendingVote.violacao !== null ? `✅ Violação: ${INV.pendingVote.violacao?'SIM':'NÃO'}<br>` : ''}
+        ${INV.pendingVote.artigo ? `📜 ${INV.pendingVote.artigo}<br>` : ''}
+        ${INV.pendingVote.culpado ? `🎯 ${INV.pendingVote.culpado}` : ''}
+        <br><small style='color:#6b7280'>${waitingVotes} jogador(es) ainda votando</small>`;
+    }
+    const canSubmit = INV.pendingVote.violacao !== null && INV.pendingVote.artigo && INV.pendingVote.culpado;
+    const btn = document.getElementById('inv-btn-submit-vote');
+    if (btn) { btn.disabled = !canSubmit; btn.style.opacity = canSubmit ? '1' : '0.4'; }
+  }
+}
+
+function invRenderResultado(state) {
+  if (!state.resultado) return;
+  const res = state.resultado;
+  const respEl = document.getElementById('inv-resposta-correta');
+  if (respEl) respEl.innerHTML = `
+    <h4>✅ Resposta Correta</h4>
+    <div class='inv-resposta-item'><span>Violação</span><strong style='color:#34d399'>${res.resposta_correta.violacao?'SIM':'NÃO'}</strong></div>
+    <div class='inv-resposta-item'><span>Artigo</span><strong style='color:#34d399'>${res.resposta_correta.artigo}</strong></div>
+    <div class='inv-resposta-item'><span>Responsável</span><strong style='color:#34d399'>${res.resposta_correta.culpado}</strong></div>
+    <div class='inv-resposta-item'><span>Direito Violado</span><strong style='color:#34d399'>${res.resposta_correta.direito}</strong></div>`;
+  const medals = ['🥇','🥈','🥉'];
+  const rankEl = document.getElementById('inv-resultado-ranking');
+  if (rankEl) rankEl.innerHTML = res.rankings.map((p,i) => `
+    <div class='inv-rank-item'>
+      <span class='inv-rank-pos'>${medals[i]||'🏅'}</span>
+      <div>
+        <div class='inv-rank-name'>${p.name}${p.id===invGetPlayerId()?' 👈':''}</div>
+        <div class='inv-rank-details'>${(p.details||[]).join(' • ')}</div>
+      </div>
+      <div class='inv-rank-score'>${p.score} pts</div>
+    </div>`).join('');
+}
+
+function invSetVote(field, value) {
+  INV.pendingVote[field] = value;
+  // Update UI
+  if (field === 'violacao') {
+    document.querySelectorAll('#vbtn-sim, #vbtn-nao').forEach(b => b.classList.remove('selected'));
+    document.getElementById(value ? 'vbtn-sim' : 'vbtn-nao')?.classList.add('selected');
+  } else {
+    document.querySelectorAll(`.inv-${field === 'artigo' ? 'artigo' : 'culpado'}-options .inv-vote-btn`).forEach(b => {
+      b.classList.toggle('selected', b.textContent.trim() === value || b.onclick?.toString().includes(`"${value}"`));
+    });
+  }
+  invRenderVotacao(INV.lastState || {players:[]});
+}
+
+async function invSubmitVote() {
+  const v = INV.pendingVote;
+  if (v.violacao === null || !v.artigo || !v.culpado) return;
+  try {
+    await fetch('/api/inv/vote', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ room_id: INV.roomId, player_id: invGetPlayerId(), vote: v }) });
+    document.getElementById('inv-btn-submit-vote').textContent = '✅ Voto enviado!';
+    document.getElementById('inv-btn-submit-vote').disabled = true;
+  } catch(e) {}
+}
+
+async function invMarkReady() {
+  await fetch('/api/inv/action', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ room_id: INV.roomId, player_id: invGetPlayerId(), action: 'ready' }) });
+  document.getElementById('inv-btn-ready').textContent = '✅ Aguardando outros...';
+  document.getElementById('inv-btn-ready').disabled = true;
+}
+
+async function invUseSkill(action) {
+  await fetch('/api/inv/action', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ room_id: INV.roomId, player_id: invGetPlayerId(), action }) });
+  invPoll();
+}
+
+async function invUseSkillOn(action, target) {
+  await fetch('/api/inv/action', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ room_id: INV.roomId, player_id: invGetPlayerId(), action, target }) });
+  invPoll();
+}
+
+async function invSendChat() {
+  const inp = document.getElementById('inv-chat-text');
+  const text = inp?.value.trim();
+  if (!text) return;
+  inp.value = '';
+  await fetch('/api/inv/chat', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ room_id: INV.roomId, player_id: invGetPlayerId(), text }) });
+  invPoll();
+}
+
+async function invSendArg(text) {
+  await fetch('/api/inv/chat', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ room_id: INV.roomId, player_id: invGetPlayerId(), text }) });
+  invPoll();
+}
+
+function invTab(name) {
+  ['case','evidence','chat'].forEach(t => {
+    document.getElementById('inv-tab-'+t)?.classList.toggle('hidden', t!==name);
+    document.querySelectorAll('.inv-tab').forEach((btn,i) => {
+      const names = ['case','evidence','chat'];
+      btn.classList.toggle('active', names[i]===name);
+    });
+  });
+}
+
+function invFmtTime(s) {
+  const m = Math.floor(s/60); const sec = Math.floor(s%60);
+  return m > 0 ? `${m}:${sec.toString().padStart(2,'0')}` : `${Math.ceil(s)}s`;
+}
+
+function invPlayAgain() {
+  if (INV.pollTimer) { clearInterval(INV.pollTimer); INV.pollTimer = null; }
+  INV.roomId = null; INV.phase = null;
+  invShowScreen('lobby');
+  invRefreshRooms();
+}
+
+/* ══ END INVESTIGATION GAME ═══════════════════════════════════════════ */
 </script>
 </body>
 </html>"""
 
 
-# ── BACKEND ──────────────────────────────────────────────────────────────────
+# â”€â”€ BACKEND â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def clean_entry(item: dict) -> dict:
     return {
@@ -3610,7 +4973,7 @@ def render_html() -> bytes:
     return html.encode("utf-8")
 
 
-# ── HTTP HANDLER ──────────────────────────────────────────────────────────────
+# â”€â”€ HTTP HANDLER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class QuizHandler(BaseHTTPRequestHandler):
     def send_bytes(self, body, ct, status=HTTPStatus.OK, cc=None):
@@ -3654,6 +5017,18 @@ class QuizHandler(BaseHTTPRequestHandler):
                 self.send_json(profiles.get(name, {}))
             else:
                 self.send_json({})
+        elif p == "/api/inv/rooms":
+            self.send_json(inv_list_rooms())
+        elif p == "/api/inv/state":
+            from urllib.parse import urlparse, parse_qs
+            qs = parse_qs(urlparse(self.path).query)
+            room_id   = qs.get("room_id",   [""])[0].strip()
+            player_id = qs.get("player_id", [""])[0].strip()
+            state = inv_get_state(room_id, player_id)
+            if state:
+                self.send_json(state)
+            else:
+                self.send_error(HTTPStatus.NOT_FOUND)
         elif p == "/api/daily":
             today = date.today().isoformat()
             self.send_json({"date": today, "challenge": "daily"})
@@ -3661,6 +5036,59 @@ class QuizHandler(BaseHTTPRequestHandler):
             self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_POST(self):
+        if self.path == "/api/inv/join":
+            size = int(self.headers.get("Content-Length", "0"))
+            try:
+                payload = json.loads(self.rfile.read(size) or b"{}")
+            except json.JSONDecodeError:
+                self.send_error(HTTPStatus.BAD_REQUEST, "JSON invalido"); return
+            result = inv_join_or_create(
+                str(payload.get("player_id", ""))[:30],
+                str(payload.get("player_name", "Jogador"))[:20],
+                str(payload.get("room_id", ""))[:12],
+            )
+            self.send_json(result, HTTPStatus.CREATED)
+            return
+        if self.path == "/api/inv/action":
+            size = int(self.headers.get("Content-Length", "0"))
+            try:
+                payload = json.loads(self.rfile.read(size) or b"{}")
+            except json.JSONDecodeError:
+                self.send_error(HTTPStatus.BAD_REQUEST, "JSON invalido"); return
+            result = inv_action(
+                str(payload.get("room_id", "")),
+                str(payload.get("player_id", "")),
+                str(payload.get("action", "")),
+                str(payload.get("target", "")),
+            )
+            self.send_json(result)
+            return
+        if self.path == "/api/inv/vote":
+            size = int(self.headers.get("Content-Length", "0"))
+            try:
+                payload = json.loads(self.rfile.read(size) or b"{}")
+            except json.JSONDecodeError:
+                self.send_error(HTTPStatus.BAD_REQUEST, "JSON invalido"); return
+            result = inv_vote(
+                str(payload.get("room_id", "")),
+                str(payload.get("player_id", "")),
+                payload.get("vote", {}),
+            )
+            self.send_json(result)
+            return
+        if self.path == "/api/inv/chat":
+            size = int(self.headers.get("Content-Length", "0"))
+            try:
+                payload = json.loads(self.rfile.read(size) or b"{}")
+            except json.JSONDecodeError:
+                self.send_error(HTTPStatus.BAD_REQUEST, "JSON invalido"); return
+            result = inv_chat(
+                str(payload.get("room_id", "")),
+                str(payload.get("player_id", "")),
+                str(payload.get("text", ""))[:200],
+            )
+            self.send_json(result)
+            return
         if self.path == "/api/account":
             size = int(self.headers.get("Content-Length", "0"))
             try:
@@ -3709,7 +5137,7 @@ class QuizHandler(BaseHTTPRequestHandler):
         pass
 
 
-# ── SERVER ────────────────────────────────────────────────────────────────────
+# â”€â”€ SERVER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def guess_ip() -> str:
     try:
