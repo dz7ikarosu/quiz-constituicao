@@ -128,6 +128,7 @@ def _make_room(creator_id: str, creator_name: str) -> dict:
         "resultado": None,
         "created_at": time.time(),
         "last_action": time.time(),
+        "bots_enabled": True,
     }
 
 def _assign_roles(room: dict):
@@ -215,13 +216,19 @@ def _make_bot_player(bot_name: str) -> dict:
     }
 
 def _fill_with_bots(room: dict):
-    """Add bots until room has at least 3 players (min viable game)."""
+    """Add bots until room has at least 2 players (min viable game), up to MAX_PLAYERS."""
+    MAX_PLAYERS = 5
+    if not room.get("bots_enabled", True):
+        return
     existing_bots = {p["id"] for p in room["players"] if p.get("is_bot")}
     available = [n for n in BOT_NAMES
                  if "BOT_" + n.replace(" ","_").upper() not in existing_bots]
     _random.shuffle(available)
-    needed = max(0, 3 - len(room["players"]))
-    for i in range(min(needed, len(available))):
+    # Fill to at least 2 players, respect max 5
+    needed = max(0, min(2, MAX_PLAYERS) - len(room["players"]))
+    slots = MAX_PLAYERS - len(room["players"])
+    to_add = min(needed, slots, len(available))
+    for i in range(to_add):
         room["players"].append(_make_bot_player(available[i]))
     room["last_action"] = time.time()
 
@@ -259,7 +266,12 @@ def _tick_bots(room: dict, now: float):
         for p in room["players"]:
             if p.get("is_bot"):
                 p["ready"] = True
-        if len(room["players"]) >= 2 and all(p.get("ready") for p in room["players"]):
+        # Start if: >= 2 players AND all humans are ready (bots always ready)
+        humans = [p for p in room["players"] if not p.get("is_bot")]
+        bots = [p for p in room["players"] if p.get("is_bot")]
+        total = len(room["players"])
+        all_humans_ready = all(p.get("ready") for p in humans) if humans else False
+        if total >= 2 and all_humans_ready and len(bots) > 0:
             _advance_phase(room)
     # Auto-vote in votacao phase
     if phase == "votacao":
@@ -302,7 +314,7 @@ def inv_join_or_create(player_id: str, player_name: str, room_id: str = "") -> d
         # Try joining existing room
         if room_id and room_id in INVESTIGATION_ROOMS:
             room = INVESTIGATION_ROOMS[room_id]
-            if room["phase"] == "lobby" and len(room["players"]) < 7:
+            if room["phase"] == "lobby" and len(room["players"]) < 5:
                 # Check not already in
                 if not any(p["id"] == player_id for p in room["players"]):
                     room["players"].append({
@@ -396,6 +408,7 @@ def inv_get_state(room_id: str, player_id: str) -> dict | None:
             "my_role": my_role,
             "tendency": tendency,
             "shifted_suspect": room.get("shifted_suspect", {}),
+            "bots_enabled": room.get("bots_enabled", True),
         }
 
 def inv_action(room_id: str, player_id: str, action: str, target: str = "") -> dict:
@@ -981,6 +994,138 @@ function useExtraTime() {
   .panel,.qcard,.feedback,.result-card{padding:15px}
   .save-row,.actions{flex-direction:column}
 }
+
+
+/* ── AUTH WALL ───────────────────────────────────────────────────── */
+#auth-wall{
+  position:fixed;inset:0;z-index:3000;
+  display:flex;align-items:center;justify-content:center;
+  background:
+    radial-gradient(ellipse at 15% 10%,rgba(21,101,192,.25) 0%,transparent 35%),
+    radial-gradient(ellipse at 85% 90%,rgba(200,160,0,.12) 0%,transparent 35%),
+    linear-gradient(180deg,#02040a,#060b14 50%,#02040a);
+  padding:16px;overflow-y:auto;
+  animation:fadeIn .4s ease both;
+}
+.auth-box{
+  width:min(440px,100%);
+  background:linear-gradient(160deg,rgba(13,18,28,.98),rgba(8,12,20,.98));
+  border:1px solid rgba(21,101,192,.35);
+  border-radius:22px;
+  box-shadow:0 0 0 1px rgba(21,101,192,.15),0 24px 64px rgba(0,0,0,.6),0 0 60px rgba(21,101,192,.1);
+  padding:28px 28px 24px;
+  animation:fadeUp .45s cubic-bezier(.22,1,.36,1) both;
+}
+.auth-logo{text-align:center;margin-bottom:22px}
+.al-icon{
+  font-size:3rem;display:block;margin-bottom:10px;
+  filter:drop-shadow(0 0 16px rgba(21,101,192,.6));
+  animation:pulse 3s ease infinite;
+}
+.auth-logo h1{
+  font-family:Georgia,serif;
+  font-size:clamp(1.5rem,4vw,2rem);
+  font-weight:900;
+  background:linear-gradient(135deg,#fff 30%,#3b82f6 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  line-height:1.15;margin-bottom:6px;
+}
+.auth-logo p{color:#7a8aaa;font-size:.85rem;line-height:1.5}
+.auth-tabs{
+  display:flex;gap:6px;
+  background:rgba(255,255,255,.04);
+  border-radius:12px;padding:5px;
+  margin-bottom:20px;
+}
+.auth-tab{
+  flex:1;padding:10px;border-radius:9px;
+  background:transparent;border:none;
+  color:#7a8aaa;font-size:.9rem;font-weight:700;
+  cursor:pointer;transition:all .22s cubic-bezier(.22,1,.36,1);
+}
+.auth-tab.active{
+  background:linear-gradient(135deg,#1565c0,#0d47a1);
+  color:#fff;
+  box-shadow:0 4px 14px rgba(21,101,192,.4);
+}
+.auth-field{margin-bottom:14px}
+.auth-field label{
+  display:block;font-size:.75rem;font-weight:800;
+  text-transform:uppercase;letter-spacing:.09em;
+  color:#7a8aaa;margin-bottom:7px;
+}
+.auth-field input{
+  width:100%;padding:13px 14px;
+  border-radius:12px;
+  background:rgba(255,255,255,.05);
+  border:1px solid rgba(21,101,192,.28);
+  color:#e8edf5;font-size:.93rem;outline:none;
+  transition:border-color .2s,box-shadow .2s;
+}
+.auth-field input:focus{
+  border-color:rgba(59,130,246,.7);
+  box-shadow:0 0 0 3px rgba(21,101,192,.15);
+}
+.auth-field input::placeholder{color:#4a5568}
+.auth-error{
+  color:#f87171;font-size:.82rem;font-weight:700;
+  min-height:18px;margin-bottom:8px;
+  animation:fadeIn .2s ease both;
+}
+.auth-success{
+  color:#34d399;font-size:.82rem;font-weight:700;
+  min-height:18px;margin-bottom:8px;
+}
+.auth-submit{
+  width:100%;padding:14px;border-radius:13px;
+  background:linear-gradient(135deg,#1565c0,#0d47a1);
+  color:#fff;font-size:.95rem;font-weight:800;
+  border:none;cursor:pointer;
+  box-shadow:0 4px 20px rgba(21,101,192,.45);
+  transition:transform .18s cubic-bezier(.22,1,.36,1),box-shadow .18s ease;
+  margin-top:4px;position:relative;overflow:hidden;
+}
+.auth-submit:hover{
+  transform:translateY(-2px);
+  box-shadow:0 6px 28px rgba(21,101,192,.6);
+}
+.auth-submit:active{transform:scale(.98)}
+.auth-submit:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.auth-guest{
+  text-align:center;margin-top:16px;
+  padding-top:14px;border-top:1px solid rgba(255,255,255,.07);
+}
+.auth-guest button{
+  background:none;border:none;
+  color:#4a5568;font-size:.82rem;
+  cursor:pointer;text-decoration:underline;
+  text-underline-offset:3px;transition:color .2s;
+}
+.auth-guest button:hover{color:#7a8aaa}
+.auth-avatar-grid{
+  display:grid;grid-template-columns:repeat(3,1fr);
+  gap:8px;margin-top:4px;
+}
+.auth-av-btn{
+  padding:12px 8px;border-radius:12px;
+  background:rgba(255,255,255,.04);
+  border:1.5px solid rgba(255,255,255,.09);
+  color:#e8edf5;font-size:.78rem;font-weight:700;
+  cursor:pointer;text-align:center;
+  transition:all .2s cubic-bezier(.22,1,.36,1);
+}
+.auth-av-btn .av-icon{font-size:1.5rem;display:block;margin-bottom:4px}
+.auth-av-btn:hover{
+  background:rgba(21,101,192,.15);
+  border-color:rgba(59,130,246,.5);
+  transform:translateY(-2px);
+}
+.auth-av-btn.selected{
+  background:rgba(21,101,192,.2);
+  border-color:#1565c0;
+  box-shadow:0 0 0 2px rgba(21,101,192,.35);
+}
+/* ── END AUTH WALL ───────────────────────────────────────────────── */
 
 /* ── PROFILE BAR ────────────────────────────────────────────────────── */
 .profile-bar{
@@ -2143,7 +2288,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
       <div class='inv-card' style='margin-top:16px;background:rgba(139,92,246,.06);border-color:rgba(139,92,246,.25)'>
         <h3 style='color:#a78bfa'>📋 Como Jogar</h3>
         <div class='inv-rules-grid'>
-          <div class='inv-rule'><span class='inv-rule-icon'>👥</span><div><strong>2-7 jogadores</strong><br><small>Cada um recebe um papel jurídico único</small></div></div>
+          <div class='inv-rule'><span class='inv-rule-icon'>👥</span><div><strong>2-5 jogadores</strong><br><small>Cada um recebe um papel jurídico único</small></div></div>
           <div class='inv-rule'><span class='inv-rule-icon'>🔍</span><div><strong>Investigação (3 min)</strong><br><small>Analise evidências e use suas habilidades</small></div></div>
           <div class='inv-rule'><span class='inv-rule-icon'>⚖️</span><div><strong>Votação (45s)</strong><br><small>Vote em violação, artigo e culpado</small></div></div>
           <div class='inv-rule'><span class='inv-rule-icon'>🏆</span><div><strong>Pontuação</strong><br><small>Violação +20, Artigo +50, Culpado +30</small></div></div>
@@ -2163,13 +2308,27 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
       </div>
 
       <div class='inv-card' style='margin-top:14px'>
-        <h3>👥 Jogadores na Sala (<span id='inv-waiting-count'>1</span>/7)</h3>
+        <h3>👥 Jogadores na Sala (<span id='inv-waiting-count'>1</span>/5)</h3>
         <div id='inv-waiting-players'></div>
         <div style='margin-top:14px'>
           <button class='inv-btn-primary' id='inv-btn-ready' onclick='invMarkReady()'>✅ Estou Pronto!</button>
-          <p style='color:var(--muted);font-size:.78rem;margin-top:8px;text-align:center'>O jogo inicia quando todos clicarem em Pronto (mín. 2 jogadores)</p>
+          <p style='color:var(--muted);font-size:.78rem;margin-top:8px;text-align:center'>Mín. 2 jogadores para iniciar • Máx. 5 jogadores</p>
+
+          <!-- Bot toggle: só aparece para o criador da sala -->
+          <div id='inv-bot-toggle-row' style='display:none;margin-top:12px;padding:12px 14px;border-radius:12px;background:rgba(139,92,246,.07);border:1px solid rgba(139,92,246,.25)'>
+            <div style='display:flex;align-items:center;justify-content:space-between;gap:10px'>
+              <div>
+                <div style='font-weight:800;font-size:.85rem;color:#c4b5fd'>🤖 Preencher com Bots</div>
+                <div style='font-size:.75rem;color:#6b7280;margin-top:2px'>Bots completam vagas vazias após 60s</div>
+              </div>
+              <button id='inv-bot-toggle-btn' onclick='invToggleBots()' style='padding:7px 16px;border-radius:9px;font-size:.8rem;font-weight:800;border:1px solid rgba(139,92,246,.5);background:rgba(139,92,246,.15);color:#a78bfa;cursor:pointer;transition:all .2s ease;min-width:60px'>
+                ON
+              </button>
+            </div>
+          </div>
+
           <div id='inv-bot-countdown' style='display:none;margin-top:10px;padding:10px 14px;border-radius:10px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);text-align:center;font-size:.8rem;color:#f59e0b'>
-            🤖 Nenhum outro jogador entrou. Bots entrarão automaticamente em <strong id='inv-bot-secs'>60</strong>s
+            🤖 Bots entrarão automaticamente em <strong id='inv-bot-secs'>60</strong>s
           </div>
         </div>
       </div>
@@ -4583,6 +4742,8 @@ const INV = {
   phase: null,
   pollTimer: null,
   lastState: null,
+  waitingSince: null,
+  botsEnabled: true,
   pendingVote: { violacao: null, artigo: null, culpado: null },
   roleColors: {
     icaro:'#3b82f6', natan:'#ef4444', luciano:'#f59e0b',
@@ -4755,16 +4916,32 @@ function invRenderWaiting(state) {
     </div>`;
   }).join('');
 
-  // Bot countdown: show after 10s waiting if solo
+  // Bot toggle row: only for room creator (first player)
+  const toggleRow = document.getElementById('inv-bot-toggle-row');
+  const toggleBtn = document.getElementById('inv-bot-toggle-btn');
+  const isCreator = state.players.length > 0 && state.players[0].id === invGetPlayerId();
+  if (toggleRow) {
+    toggleRow.style.display = isCreator ? 'block' : 'none';
+    if (toggleBtn) {
+      const botsOn = state.bots_enabled !== false;
+      INV.botsEnabled = botsOn;
+      toggleBtn.textContent = botsOn ? 'ON' : 'OFF';
+      toggleBtn.style.background = botsOn ? 'rgba(139,92,246,.2)' : 'rgba(255,255,255,.05)';
+      toggleBtn.style.color = botsOn ? '#a78bfa' : '#6b7280';
+    }
+  }
+
+  // Bot countdown
   const botDiv = document.getElementById('inv-bot-countdown');
   const botSecs = document.getElementById('inv-bot-secs');
   if (botDiv && INV.waitingSince) {
     const elapsed = Math.floor((Date.now() - INV.waitingSince) / 1000);
     const humanCount = state.players.filter(p => !p.is_bot).length;
-    if (humanCount < 3 && elapsed >= 10) {
+    const botsEnabled = state.bots_enabled !== false;
+    if (botsEnabled && humanCount < 5 && elapsed >= 10) {
       botDiv.style.display = 'block';
       if (botSecs) botSecs.textContent = Math.max(0, 60 - elapsed);
-    } else if (humanCount >= 3) {
+    } else {
       botDiv.style.display = 'none';
     }
   }
@@ -4992,6 +5169,17 @@ async function invMarkReady() {
     body: JSON.stringify({ room_id: INV.roomId, player_id: invGetPlayerId(), action: 'ready' }) });
   document.getElementById('inv-btn-ready').textContent = '✅ Aguardando outros...';
   document.getElementById('inv-btn-ready').disabled = true;
+}
+
+async function invToggleBots() {
+  const newState = !(INV.botsEnabled !== false);
+  try {
+    await fetch('/api/inv/toggle_bots', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ room_id: INV.roomId, player_id: invGetPlayerId(), enabled: newState }) });
+    INV.botsEnabled = newState;
+    invPoll();
+    invToast(newState ? '🤖 Bots ativados' : '🚫 Bots desativados');
+  } catch(e) {}
 }
 
 async function invUseSkill(action) {
@@ -5258,6 +5446,23 @@ class QuizHandler(BaseHTTPRequestHandler):
             self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_POST(self):
+        if self.path == "/api/inv/toggle_bots":
+            size = int(self.headers.get("Content-Length", "0"))
+            try:
+                payload = json.loads(self.rfile.read(size) or b"{}")
+            except json.JSONDecodeError:
+                self.send_error(HTTPStatus.BAD_REQUEST); return
+            room_id   = str(payload.get("room_id", ""))
+            player_id = str(payload.get("player_id", ""))
+            enabled   = bool(payload.get("enabled", True))
+            with INV_LOCK:
+                room = INVESTIGATION_ROOMS.get(room_id)
+                if room and room["players"] and room["players"][0]["id"] == player_id:
+                    room["bots_enabled"] = enabled
+                    self.send_json({"ok": True, "bots_enabled": enabled})
+                else:
+                    self.send_json({"ok": False, "msg": "Apenas o criador pode alterar"})
+            return
         if self.path == "/api/inv/join":
             size = int(self.headers.get("Content-Length", "0"))
             try:
@@ -5401,4 +5606,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
