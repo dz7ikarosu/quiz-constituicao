@@ -604,11 +604,27 @@ ICON_SVG = """<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'>
 <text x='256' y='316' text-anchor='middle' font-size='78' font-family='Trebuchet MS,sans-serif' font-weight='700' fill='#c8a000'>CF88</text>
 </svg>"""
 
-SERVICE_WORKER = """const CACHE_NAME='a3ilpb-v4';
-const SHELL=['/','/manifest.webmanifest','/icon.svg'];
-self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE_NAME).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting()));});
-self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE_NAME).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});
-self.addEventListener('fetch',e=>{const r=e.request;if(r.method!=='GET')return;const u=new URL(r.url);if(u.pathname.startsWith('/api/')){e.respondWith(fetch(r,{cache:'no-store'}));return;}e.respondWith(caches.match(r).then(c=>{if(c)return c;return fetch(r).then(n=>{if(n.ok&&u.origin===location.origin){caches.open(CACHE_NAME).then(ca=>ca.put(r,n.clone()));}return n;}).catch(()=>caches.match('/'));}));});"""
+SERVICE_WORKER = """const CACHE_NAME='a3ilpb-v1774407760';
+/* NUNCA cacheia o HTML principal — sempre busca fresco do servidor */
+self.addEventListener('install',e=>{self.skipWaiting();});
+self.addEventListener('activate',e=>{
+  e.waitUntil(caches.keys().then(ks=>Promise.all(ks.map(k=>caches.delete(k)))).then(()=>self.clients.claim()));
+});
+self.addEventListener('fetch',e=>{
+  const u=new URL(e.request.url);
+  /* API e pagina principal: sempre rede, sem cache */
+  if(u.pathname==='/'||u.pathname==='/index.html'||u.pathname.startsWith('/api/')){
+    e.respondWith(fetch(e.request,{cache:'no-store'}));return;
+  }
+  /* Demais assets: cache normal */
+  e.respondWith(caches.match(e.request).then(c=>{
+    if(c)return c;
+    return fetch(e.request).then(n=>{
+      if(n.ok){caches.open(CACHE_NAME).then(ca=>ca.put(e.request,n.clone()));}
+      return n;
+    });
+  }));
+});"""
 
 HTML = r"""<!DOCTYPE html>
 <html lang='pt-BR'>
@@ -3347,6 +3363,18 @@ function renderLevelCards() {
 
 /* ── PWA ──────────────────────────────────────────────────────────── */
 function setupPWA() {
+  /* Limpa TODOS os caches antigos e re-registra o SW sempre */
+  if ('caches' in window) {
+    caches.keys().then(keys => keys.forEach(k => {
+      if (!k.includes('a3ilpb-v1774407760')) caches.delete(k);
+    }));
+  }
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(regs => {
+      regs.forEach(r => r.update());
+    });
+  }
+
   if ('serviceWorker' in navigator)
     navigator.serviceWorker.register('/service-worker.js').catch(()=>{});
   window.addEventListener('beforeinstallprompt', e => {
@@ -5177,7 +5205,15 @@ class QuizHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         p = self.path.split("?")[0]
         if p in {"/", "/index.html"}:
-            self.send_bytes(render_html(), "text/html; charset=utf-8")
+            body = render_html()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
+            self.end_headers()
+            self.wfile.write(body)
         elif p == "/manifest.webmanifest":
             self.send_bytes(json.dumps(MANIFEST, ensure_ascii=False).encode(), "application/manifest+json; charset=utf-8")
         elif p == "/service-worker.js":
