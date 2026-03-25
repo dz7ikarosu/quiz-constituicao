@@ -434,7 +434,7 @@ def inv_action(room_id: str, player_id: str, action: str, target: str = "") -> d
         me = next((p for p in room["players"] if p["id"] == player_id), None)
         if not me:
             return {"ok": False, "msg": "Jogador nao encontrado"}
-        if room["phase"] not in ("investigacao", "debate"):
+        if action != "ready" and room["phase"] not in ("investigacao", "debate"):
             return {"ok": False, "msg": "Fase incorreta para acoes"}
         used = me.get("actions_used", [])
         role = me.get("role")
