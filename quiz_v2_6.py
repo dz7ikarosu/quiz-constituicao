@@ -174,12 +174,22 @@ def _calc_resultado(room: dict):
             pts += 20; details.append("✅ Violacao: +20")
         else:
             details.append("❌ Violacao: 0")
-        player_artigo = v.get("artigo", "").strip().lower().replace("\u00ba", "").replace(".", "").replace(" ", "")
-        correct_artigo = correct["artigo"].lower().replace("\u00ba", "").replace(".", "").replace(" ", "")
+        # Normalize articles: strip ordinal indicators, accents, dots, spaces for robust comparison
+        import unicodedata as _ud
+        def _norm_artigo(s):
+            s = s.strip().lower()
+            # Replace common ordinal variants: º ° ª and unicode equivalents
+            for ch in ("\u00ba", "\u00b0", "\u00aa", "\u2070", "\u1d52"):
+                s = s.replace(ch, "o")
+            s = "".join(c for c in _ud.normalize("NFD", s) if _ud.category(c) != "Mn")
+            s = s.replace(".", "").replace(",", "").replace(" ", "").replace("-", "")
+            return s
+        player_artigo = _norm_artigo(v.get("artigo", ""))
+        correct_artigo = _norm_artigo(correct["artigo"])
         if player_artigo and (player_artigo == correct_artigo or player_artigo in correct_artigo or correct_artigo in player_artigo):
-            pts += 50; details.append("\u2705 Artigo: +50")
+            pts += 50; details.append("Artigo: +50")
         else:
-            details.append(f"\u274c Artigo correto: {correct['artigo']}")
+            details.append(f"Artigo correto: {correct['artigo']}")
         if v.get("culpado", "").strip().lower() == correct["culpado"].strip().lower():
             pts += 30; details.append("✅ Culpado: +30")
         else:
@@ -209,6 +219,120 @@ import random as _random
 BOT_NAMES = ["Dr. Cunha","Dra. Alves","Prof. Lima","Adv. Torres","Min. Costa","Proc. Neves","Del. Braga"]
 BOT_WAIT_SECONDS = 60   # fill with bots after 60s without enough players
 
+# Bot personality: role-based chat messages for realistic interaction
+BOT_CHAT_MESSAGES = {
+    "icaro": {
+        "investigacao": [
+            "Essa evidencia parece fragil. Vou contestar.",
+            "Cuidado com conclusoes precipitadas. A defesa tem argumentos solidos.",
+            "Precisamos analisar se houve devido processo legal.",
+            "Vejo margem para duvida razoavel nesse caso.",
+            "A evidencia principal pode ter vicio formal.",
+            "Nem toda irregularidade configura violacao constitucional.",
+        ],
+        "debate": [
+            "Como advogado, defendo que faltam provas conclusivas.",
+            "O contraditorio precisa ser respeitado antes de qualquer julgamento.",
+            "A narrativa acusatoria tem lacunas importantes.",
+            "Solicito cautela na analise das evidencias apresentadas.",
+        ],
+    },
+    "natan": {
+        "investigacao": [
+            "Essa evidencia e critica! Vou marca-la.",
+            "Os fatos apontam claramente para uma violacao.",
+            "Temos provas suficientes para uma acusacao formal.",
+            "O padrao de conduta do suspeito e inequivoco.",
+            "Essa prova corrobora a tese de violacao constitucional.",
+            "A acusacao se fortalece a cada nova evidencia.",
+        ],
+        "debate": [
+            "As provas sao contundentes. Houve violacao clara.",
+            "Nao podemos ignorar o peso das evidencias coletadas.",
+            "O Ministerio Publico tem convicao na acusacao.",
+            "A sociedade precisa de justica neste caso.",
+        ],
+    },
+    "luciano": {
+        "investigacao": [
+            "Vou investigar mais a fundo. Pode haver evidencias ocultas.",
+            "Os detalhes do caso revelam um padrao suspeito.",
+            "Preciso cruzar dados para confirmar a hipotese.",
+            "Minha investigacao aponta para pistas importantes.",
+            "Ha algo mais nesse caso do que parece a primeira vista.",
+        ],
+        "debate": [
+            "A investigacao revelou fatos que mudam o cenario.",
+            "Os dados cruzados confirmam a linha investigativa.",
+            "Como delegado, recomendo cautela mas firmeza.",
+        ],
+    },
+    "giovanna": {
+        "investigacao": [
+            "Vou analisar a tendencia dos votos para orientar o julgamento.",
+            "Como juiza, preciso de imparcialidade na analise.",
+            "O peso das evidencias sera determinante no veredicto.",
+            "Cada argumento sera considerado no julgamento final.",
+        ],
+        "debate": [
+            "O tribunal precisa de argumentos fundamentados.",
+            "Vou ponderar todos os lados antes do veredicto.",
+            "A justica exige analise criteriosa de cada prova.",
+        ],
+    },
+    "thalles": {
+        "investigacao": [
+            "Identifico possiveis falhas processuais neste caso.",
+            "O procedimento administrativo pode ter vicios.",
+            "Preciso verificar se houve nulidade no processo.",
+            "Ha irregularidades formais que precisam ser analisadas.",
+        ],
+        "debate": [
+            "A falha processual pode invalidar parte das provas.",
+            "O rito legal nao foi seguido corretamente.",
+            "Questoes formais podem mudar o desfecho.",
+        ],
+    },
+    "izabella": {
+        "investigacao": [
+            "Sugiro analisar o Art. 5 para fundamentar a decisao.",
+            "A jurisprudencia do STF pode nos ajudar aqui.",
+            "Vou verificar quais artigos se aplicam ao caso.",
+            "A fundamentacao juridica e essencial para o voto correto.",
+            "Ha precedentes constitucionais relevantes para este caso.",
+        ],
+        "debate": [
+            "A Constituicao e clara sobre este tipo de violacao.",
+            "Recomendo fundamentar o voto no artigo adequado.",
+            "A doutrina constitucional aponta um caminho claro.",
+        ],
+    },
+    "dilerman": {
+        "investigacao": [
+            "O impacto coletivo deste caso e significativo.",
+            "Precisamos avaliar quantas pessoas sao afetadas.",
+            "A dimensao social da violacao e enorme.",
+            "Como procurador, analiso o interesse publico envolvido.",
+        ],
+        "debate": [
+            "O interesse publico deve prevalecer nesta analise.",
+            "A sociedade como um todo e afetada por esta decisao.",
+            "A procuradoria defende o interesse coletivo.",
+        ],
+    },
+}
+
+# Bot skill usage preferences per role
+BOT_SKILL_PRIORITIES = {
+    "icaro": ["contestacao", "tese", "duvida"],
+    "natan": ["marcar", "acusar"],
+    "luciano": ["desbloquear", "cruzar"],
+    "giovanna": ["ver", "peso"],
+    "thalles": ["falha", "anular"],
+    "izabella": ["sugerir", "analisar"],
+    "dilerman": ["impacto", "anular_fraca"],
+}
+
 def _make_bot_player(bot_name: str) -> dict:
     return {
         "id": "BOT_" + bot_name.replace(" ", "_").upper(),
@@ -220,19 +344,22 @@ def _make_bot_player(bot_name: str) -> dict:
         "actions_used": [],
         "joined_at": time.time(),
         "is_bot": True,
+        "_bot_next_chat": 0.0,
+        "_bot_next_skill": 0.0,
+        "_bot_chat_count": 0,
+        "_bot_skill_count": 0,
     }
 
 def _fill_with_bots(room: dict):
-    """Preenche sala com bots até 3 jogadores, respeitando max 5."""
+    """Preenche sala com bots ate 3 jogadores, respeitando max 5."""
     MAX_PLAYERS = 5
-    MIN_WITH_BOTS = 3   # mínimo confortável de jogadores
+    MIN_WITH_BOTS = 3
     if not room.get("bots_enabled", True):
         return
     existing_bots = {p["id"] for p in room["players"] if p.get("is_bot")}
     available = [n for n in BOT_NAMES
                  if "BOT_" + n.replace(" ","_").upper() not in existing_bots]
     _random.shuffle(available)
-    # Preenche até MIN_WITH_BOTS ou MAX_PLAYERS (o que for menor)
     target = min(MIN_WITH_BOTS, MAX_PLAYERS)
     needed = max(0, target - len(room["players"]))
     slots  = MAX_PLAYERS - len(room["players"])
@@ -242,27 +369,170 @@ def _fill_with_bots(room: dict):
     room["last_action"] = time.time()
 
 def _bot_vote(room: dict):
-    """Make bots vote with plausible (but imperfect) answers."""
+    """Bots vote with role-aware intelligence based on evidence weights."""
     case = room["case"]
     correct = case["resposta"]
     all_articles = [
-        "Art. 5º, IV","Art. 5º, X","Art. 5º, XI","Art. 5º, III",
-        "Art. 5º, LV","Art. 5º, IX","Art. 5º caput","Art. 37","Art. 7º",
+        "Art. 5o, IV","Art. 5o, X","Art. 5o, XI","Art. 5o, III",
+        "Art. 5o, LV","Art. 5o, IX","Art. 5o caput","Art. 37","Art. 7o",
     ]
     envolvidos = case["envolvidos"]
+
+    # Calculate evidence strength to inform bot accuracy
+    total_weight = sum(room["evidence_weights"].get(e["id"], e["peso"]) for e in case["evidencias"]
+                       if e["id"] not in room.get("removed_evidences", []))
+    max_possible = len(case["evidencias"]) * 1.0
+    evidence_strength = total_weight / max_possible if max_possible > 0 else 0.5
+
     for p in room["players"]:
         if not p.get("is_bot"):
             continue
         if p.get("vote"):
             continue
-        # 70% chance of correct violacao, 60% correct artigo, 55% correct culpado
-        violacao = correct["violacao"] if _random.random() < 0.70 else (not correct["violacao"])
-        artigo   = correct["artigo"]   if _random.random() < 0.60 else _random.choice(all_articles)
-        culpado  = correct["culpado"]  if _random.random() < 0.55 else _random.choice(envolvidos)
+        role = p.get("role", "")
+
+        # Role-based accuracy modifiers
+        base_violacao = 0.72
+        base_artigo = 0.62
+        base_culpado = 0.57
+        if role == "natan":
+            base_violacao += 0.10
+            base_culpado += 0.08
+        elif role == "icaro":
+            base_violacao -= 0.15  # defense lawyer may disagree
+            base_artigo += 0.05
+        elif role == "izabella":
+            base_artigo += 0.18   # legal consultant knows articles
+        elif role == "giovanna":
+            base_violacao += 0.08
+            base_culpado += 0.10
+        elif role == "luciano":
+            base_culpado += 0.15  # investigator finds the culprit
+        elif role == "thalles":
+            base_artigo += 0.08
+        elif role == "dilerman":
+            base_violacao += 0.05
+            base_culpado += 0.05
+
+        # Evidence strength modulates accuracy
+        if evidence_strength > 0.7:
+            base_violacao += 0.05
+        elif evidence_strength < 0.4:
+            base_violacao -= 0.10
+
+        violacao = correct["violacao"] if _random.random() < min(base_violacao, 0.92) else (not correct["violacao"])
+        artigo   = correct["artigo"]   if _random.random() < min(base_artigo, 0.85) else _random.choice(all_articles)
+        culpado  = correct["culpado"]  if _random.random() < min(base_culpado, 0.80) else _random.choice(envolvidos)
         p["vote"] = {"violacao": violacao, "artigo": artigo, "culpado": culpado}
 
+def _bot_chat(room: dict, bot: dict, now: float):
+    """Bot sends a contextual chat message based on its role."""
+    role = bot.get("role", "")
+    phase = room["phase"]
+    if phase not in ("investigacao", "debate"):
+        return
+    msgs = BOT_CHAT_MESSAGES.get(role, {}).get(phase, [])
+    if not msgs:
+        return
+    # Limit chat frequency: max 3 messages per phase, spaced 12-25s apart
+    if bot.get("_bot_chat_count", 0) >= 3:
+        return
+    if now < bot.get("_bot_next_chat", 0):
+        return
+
+    msg_text = _random.choice(msgs)
+    room.setdefault("messages", []).append({
+        "ts": now,
+        "player": bot["name"],
+        "text": msg_text,
+        "role": role,
+        "is_bot": True,
+    })
+    bot["_bot_chat_count"] = bot.get("_bot_chat_count", 0) + 1
+    bot["_bot_next_chat"] = now + _random.uniform(12, 25)
+
+def _bot_use_skill(room: dict, bot: dict, now: float):
+    """Bot uses a role ability strategically."""
+    role = bot.get("role", "")
+    phase = room["phase"]
+    if phase not in ("investigacao", "debate"):
+        return
+    if now < bot.get("_bot_next_skill", 0):
+        return
+    if bot.get("_bot_skill_count", 0) >= 2:
+        return
+
+    role_obj = next((r for r in INVESTIGATION_ROLES if r["id"] == role), None)
+    if not role_obj:
+        return
+
+    priorities = BOT_SKILL_PRIORITIES.get(role, [])
+    used = bot.get("actions_used", [])
+
+    for skill_key in priorities:
+        hab = role_obj["habilidades"].get(skill_key)
+        if not hab:
+            continue
+        if hab.get("uses") == 1 and skill_key in used:
+            continue
+        if skill_key in used and not hab.get("uses"):
+            # Non-ultimate skills: allow reuse but limit
+            pass
+
+        # Execute the skill
+        msg_action = ""
+        evidences = room["case"]["evidencias"]
+        avail_ev = [e for e in evidences if e["id"] not in room.get("removed_evidences", [])]
+
+        if skill_key == "contestacao" and avail_ev:
+            target = _random.choice(avail_ev)["id"]
+            w = room["evidence_weights"].get(target, 0.5)
+            room["evidence_weights"][target] = round(w * 0.6, 2)
+            if target not in room.get("contested", []):
+                room.setdefault("contested", []).append(target)
+            msg_action = f"⚖️ {bot['name']} contestou evidencia {target}"
+        elif skill_key == "marcar" and avail_ev:
+            # Prefer high-weight evidence
+            sorted_ev = sorted(avail_ev, key=lambda e: room["evidence_weights"].get(e["id"], 0), reverse=True)
+            target = sorted_ev[0]["id"]
+            w = room["evidence_weights"].get(target, 0.5)
+            room["evidence_weights"][target] = min(1.0, round(w * 1.5, 2))
+            if target not in room.get("critical", []):
+                room.setdefault("critical", []).append(target)
+            msg_action = f"🔥 {bot['name']} marcou evidencia {target} como CRITICA"
+        elif skill_key == "desbloquear":
+            h = room.get("hidden_evidence")
+            if h and not h.get("revealed"):
+                h["revealed"] = True
+                msg_action = f"🕵️ {bot['name']} revelou evidencia oculta!"
+            else:
+                continue
+        elif skill_key == "ver":
+            msg_action = f"👁️ {bot['name']} analisou a tendencia dos votos"
+        elif skill_key == "sugerir":
+            msg_action = f"📚 {bot['name']} solicitou fundamentacao juridica"
+        elif skill_key == "impacto":
+            msg_action = f"🏛️ {bot['name']} analisou impacto coletivo do caso"
+        elif skill_key == "falha":
+            msg_action = f"📊 {bot['name']} identificou falha processual!"
+        elif skill_key == "acusar":
+            msg_action = f"🔥 {bot['name']} emitiu Acusacao Formal!"
+        elif skill_key == "peso":
+            bot["vote_weight"] = 2
+            msg_action = f"⚖️ {bot['name']} ativou Voto Qualificado!"
+        else:
+            msg_action = f"⚡ {bot['name']} usou {hab['nome']}"
+
+        if msg_action:
+            bot.setdefault("actions_used", []).append(skill_key)
+            room.setdefault("actions_log", []).append({"ts": now, "msg": msg_action})
+            bot["_bot_skill_count"] = bot.get("_bot_skill_count", 0) + 1
+            bot["_bot_next_skill"] = now + _random.uniform(15, 35)
+            room["last_action"] = now
+            break  # One skill per tick
+
 def _tick_bots(room: dict, now: float):
-    """Tick dos bots: preencher sala, iniciar jogo e votar automaticamente."""
+    """Tick dos bots: preencher sala, iniciar jogo, usar habilidades, conversar e votar."""
     phase = room["phase"]
 
     if phase == "lobby":
@@ -290,13 +560,65 @@ def _tick_bots(room: dict, now: float):
         )
         if should_start:
             _advance_phase(room)
-            return  # phase changed, skip further checks this tick
+            return
 
-    # Auto-votar na fase de votacao (re-read phase in case it changed)
+    # Bot interactions during investigation/debate
+    if room["phase"] in ("investigacao", "debate"):
+        elapsed_phase = now - room["phase_start"]
+        if elapsed_phase >= 8:  # Wait 8s before bots start interacting
+            for p in room["players"]:
+                if not p.get("is_bot"):
+                    continue
+                # Stagger bot actions with randomization
+                if _random.random() < 0.35:
+                    _bot_chat(room, p, now)
+                if _random.random() < 0.25:
+                    _bot_use_skill(room, p, now)
+
+    # Auto-votar na fase de votacao
     if room["phase"] == "votacao":
         elapsed_phase = now - room["phase_start"]
-        if elapsed_phase >= 15:
-            _bot_vote(room)
+        # Bots vote at staggered times (8-20s into voting)
+        for p in room["players"]:
+            if not p.get("is_bot"):
+                continue
+            if p.get("vote"):
+                continue
+            bot_vote_delay = 8 + hash(p["id"]) % 12
+            if elapsed_phase >= bot_vote_delay:
+                _bot_vote_single(room, p)
+
+def _bot_vote_single(room: dict, bot: dict):
+    """Single bot votes with role-aware intelligence."""
+    case = room["case"]
+    correct = case["resposta"]
+    all_articles = [
+        "Art. 5o, IV","Art. 5o, X","Art. 5o, XI","Art. 5o, III",
+        "Art. 5o, LV","Art. 5o, IX","Art. 5o caput","Art. 37","Art. 7o",
+    ]
+    envolvidos = case["envolvidos"]
+    role = bot.get("role", "")
+    total_weight = sum(room["evidence_weights"].get(e["id"], e["peso"]) for e in case["evidencias"]
+                       if e["id"] not in room.get("removed_evidences", []))
+    max_possible = len(case["evidencias"]) * 1.0
+    evidence_strength = total_weight / max_possible if max_possible > 0 else 0.5
+
+    base_v, base_a, base_c = 0.72, 0.62, 0.57
+    if role == "natan":    base_v += 0.10; base_c += 0.08
+    elif role == "icaro":  base_v -= 0.15; base_a += 0.05
+    elif role == "izabella": base_a += 0.18
+    elif role == "giovanna": base_v += 0.08; base_c += 0.10
+    elif role == "luciano":  base_c += 0.15
+    elif role == "thalles":  base_a += 0.08
+    elif role == "dilerman": base_v += 0.05; base_c += 0.05
+
+    if evidence_strength > 0.7: base_v += 0.05
+    elif evidence_strength < 0.4: base_v -= 0.10
+
+    violacao = correct["violacao"] if _random.random() < min(base_v, 0.92) else (not correct["violacao"])
+    artigo   = correct["artigo"]   if _random.random() < min(base_a, 0.85) else _random.choice(all_articles)
+    culpado  = correct["culpado"]  if _random.random() < min(base_c, 0.80) else _random.choice(envolvidos)
+    bot["vote"] = {"violacao": violacao, "artigo": artigo, "culpado": culpado}
 # ── END BOT SYSTEM ────────────────────────────────────────────────────────────
 
 def _tick_rooms():
@@ -1977,6 +2299,146 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
   box-shadow:0 8px 28px rgba(0,0,0,.4);white-space:nowrap;
 }
 /* ── END GLOBAL ANIMATIONS v3 ─────────────────────────────────────── */
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PERFORMANCE: prefers-reduced-motion — disables heavy anims on weak devices
+   ═══════════════════════════════════════════════════════════════════════ */
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.01ms!important;animation-iteration-count:1!important;
+    transition-duration:.01ms!important;scroll-behavior:auto!important;
+  }
+  .inv-countdown-ring{animation:none!important}
+  .inv-phase-indicator{animation:none!important}
+  .inv-toast-notif{animation:none!important}
+  .fury-active,.fury-overlay{animation:none!important}
+  #particles-canvas,#star-canvas,#bg-symbols{display:none!important}
+  .bg-sym{animation:none!important}
+  .score-burst,.coin-gain{animation:none!important}
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   INVESTIGATION v4 — Enhanced Interactivity & Design
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Bot typing indicator */
+@keyframes typingDot{0%,80%,100%{opacity:.3;transform:scale(.8)}40%{opacity:1;transform:scale(1.1)}}
+.inv-typing-indicator{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:6px 14px;border-radius:12px;
+  background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.18);
+  margin-bottom:6px;animation:invSlideUp .25s ease both;
+}
+.inv-typing-indicator .inv-typing-name{font-size:.75rem;font-weight:700;margin-right:6px}
+.inv-typing-dot{
+  width:6px;height:6px;border-radius:50%;background:#a78bfa;
+  animation:typingDot 1.2s ease infinite;
+}
+.inv-typing-dot:nth-child(2){animation-delay:.15s}
+.inv-typing-dot:nth-child(3){animation-delay:.3s}
+
+/* Phase transition overlay */
+@keyframes phaseFlash{0%{opacity:0;transform:scale(1.05)}15%{opacity:1;transform:scale(1)}85%{opacity:1}100%{opacity:0;transform:scale(.98)}}
+.inv-phase-transition{
+  position:fixed;inset:0;z-index:3000;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:rgba(3,6,8,.92);backdrop-filter:blur(8px);
+  animation:phaseFlash 2s cubic-bezier(.22,1,.36,1) forwards;
+  pointer-events:none;
+}
+.inv-phase-transition .ipt-icon{font-size:3.5rem;margin-bottom:12px;animation:invPop .5s cubic-bezier(.22,1,.36,1) both}
+.inv-phase-transition .ipt-title{font-family:Georgia,serif;font-size:1.8rem;font-weight:900;color:#fff;margin-bottom:6px}
+.inv-phase-transition .ipt-sub{font-size:.9rem;color:#a78bfa}
+
+/* Evidence weight bar (visual indicator) */
+.inv-ev-weight-bar{
+  height:4px;border-radius:99px;background:rgba(255,255,255,.06);
+  margin-top:8px;overflow:hidden;
+}
+.inv-ev-weight-fill{
+  height:100%;border-radius:99px;
+  transition:width .5s cubic-bezier(.22,1,.36,1),background .3s;
+}
+
+/* Bot badge in chat */
+.inv-bot-badge{
+  display:inline-block;padding:1px 6px;border-radius:4px;
+  background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.3);
+  color:#f59e0b;font-size:.62rem;font-weight:800;
+  text-transform:uppercase;letter-spacing:.05em;margin-left:4px;
+  vertical-align:middle;
+}
+
+/* Action feedback flash */
+@keyframes actionFlash{0%{background:rgba(139,92,246,.25)}100%{background:transparent}}
+.inv-action-flash{animation:actionFlash .8s ease both;border-radius:12px}
+
+/* Enhanced quick arguments - contextual */
+.inv-arg-btn.role-specific{
+  background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.35);color:#93c5fd;
+}
+.inv-arg-btn.role-specific:hover{background:rgba(59,130,246,.25)}
+
+/* Player status indicators */
+.inv-player-status{
+  width:8px;height:8px;border-radius:50%;
+  display:inline-block;margin-right:4px;
+}
+.inv-player-status.online{background:#34d399;box-shadow:0 0 6px rgba(52,211,153,.5)}
+.inv-player-status.voting{background:#f59e0b;box-shadow:0 0 6px rgba(245,158,11,.5)}
+.inv-player-status.voted{background:#3b82f6;box-shadow:0 0 6px rgba(59,130,246,.5)}
+
+/* Evidence contested/critical pulse */
+@keyframes evContestPulse{0%,100%{border-color:rgba(239,68,68,.35)}50%{border-color:rgba(239,68,68,.7)}}
+@keyframes evCriticalPulse{0%,100%{border-color:rgba(245,158,11,.45)}50%{border-color:rgba(245,158,11,.8);box-shadow:0 0 20px rgba(245,158,11,.2)}}
+.inv-evidence-item.contested{animation:evContestPulse 2s ease infinite}
+.inv-evidence-item.critical{animation:evCriticalPulse 2s ease infinite}
+
+/* Resultado analysis card */
+.inv-analysis-item{
+  padding:10px 14px;border-radius:10px;
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);
+  margin-bottom:8px;font-size:.84rem;color:#c8c8d8;line-height:1.6;
+}
+.inv-analysis-item strong{color:#a78bfa}
+
+/* Score animation in resultado */
+@keyframes scoreCount{from{opacity:0;transform:scale(.5)}to{opacity:1;transform:scale(1)}}
+.inv-rank-score-anim{animation:scoreCount .6s cubic-bezier(.22,1,.36,1) both}
+
+/* Notification badge for tabs */
+.inv-tab-badge{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:18px;height:18px;border-radius:99px;
+  background:#ef4444;color:#fff;font-size:.65rem;font-weight:900;
+  margin-left:4px;padding:0 4px;
+  animation:invPop .3s cubic-bezier(.22,1,.36,1) both;
+}
+
+/* Improved mobile investigation layout */
+@media(max-width:700px){
+  .inv-investigation-layout{grid-template-columns:1fr}
+  .inv-lobby-grid{grid-template-columns:1fr}
+  .inv-lobby-container,.inv-waiting-container,.inv-vote-container,
+  .inv-resultado-container,.inv-game-container{padding:10px 10px 80px}
+  .inv-header{padding:8px 10px;gap:8px}
+  .inv-header-title{font-size:.88rem}
+  .inv-timer{font-size:.95rem}
+  .inv-quick-args{gap:4px}
+  .inv-arg-btn{padding:5px 8px;font-size:.7rem}
+  .inv-chat-messages{max-height:180px}
+  .inv-ev-actions{flex-direction:column}
+  .inv-ev-btn{width:100%;text-align:center}
+}
+
+/* GPU-accelerated transitions for smooth performance */
+.inv-card,.inv-evidence-item,.inv-chat-msg,.inv-rank-item,.inv-vote-btn,.inv-skill-btn{
+  will-change:transform;
+  -webkit-backface-visibility:hidden;backface-visibility:hidden;
+}
+
+/* Toast exit animation */
+@keyframes toastOut{from{opacity:1;transform:translateX(-50%) translateY(0)}to{opacity:0;transform:translateX(-50%) translateY(20px)}}
 
 </style>
 </head>
@@ -4975,17 +5437,25 @@ function invRenderState(state) {
   // Also update displays immediately with server value
   if (state.time_left != null) invUpdateTimerDisplays(state.time_left);
 
-  // Phase transitions
+  // Phase transitions with cinematic overlay
   if (phase !== INV.phase) {
+    const prevPhase = INV.phase;
     INV.phase = phase;
-    const phaseMessages = {
-      intro: '📋 Caso revelado! Leia os detalhes.',
-      investigacao: '🔍 Investigação iniciada! Use suas habilidades.',
-      debate: '💬 Fase de debate! Convença os outros.',
-      votacao: '⚖️ Hora de votar! Decida com sabedoria.',
-      resultado: '🏛️ Veredicto final!'
+    INV._msgCount = 0; // reset message counter for tab badge
+    INV._actionCount = 0;
+    const phaseData = {
+      intro:        {icon:'📋', title:'Caso Revelado',        sub:'Leia os detalhes do caso'},
+      investigacao: {icon:'🔍', title:'Investigacao Iniciada', sub:'Use suas habilidades para analisar'},
+      debate:       {icon:'💬', title:'Fase de Debate',        sub:'Convenca os outros jogadores'},
+      votacao:      {icon:'⚖️', title:'Hora da Decisao',       sub:'Vote com sabedoria'},
+      resultado:    {icon:'🏛️', title:'Veredicto Final',       sub:'Resultado da investigacao'}
     };
-    if (phaseMessages[phase]) invToast(phaseMessages[phase]);
+    const pd = phaseData[phase];
+    if (pd && prevPhase) {
+      // Show cinematic phase transition
+      invShowPhaseTransition(pd.icon, pd.title, pd.sub);
+      try { vibrate([100, 50, 80]); } catch(e) {}
+    }
     if (phase === 'intro') invShowScreen('intro');
     else if (phase === 'investigacao') { invShowScreen('investigacao'); invRenderMyRole(state); }
     else if (phase === 'debate') { invShowScreen('investigacao'); invTab('chat'); }
@@ -5057,21 +5527,31 @@ function invRenderIntro(state) {
   const e = document.getElementById('inv-intro-envolvidos');
   if (t) t.textContent = state.case.title;
   if (h) h.textContent = state.case.historia;
-  if (e) e.innerHTML = (state.case.envolvidos||[]).map(ev => `<span class='inv-envolvido-chip'>${ev}</span>`).join('');
+  if (e) e.innerHTML = (state.case.envolvidos||[]).map((ev,i) => `<span class='inv-envolvido-chip' style='animation:invSlideUp .3s ease ${i*0.08}s both'>${ev}</span>`).join('');
   // Timer is handled by invUpdateTimerDisplays / local timer
-  // Show role if available
+  // Show role with enhanced reveal animation
   const roleReveal = document.getElementById('inv-role-reveal');
-  if (roleReveal && state.my_role) {
+  if (roleReveal && state.my_role && !INV._roleRevealed) {
+    INV._roleRevealed = true;
     roleReveal.classList.remove('hidden');
     const col = INV.roleColors[state.my_role.id] || '#8b5cf6';
     roleReveal.style.background = `linear-gradient(135deg,${col}22,${col}08)`;
     roleReveal.style.border = `1px solid ${col}40`;
+    roleReveal.style.animation = 'invPop .5s cubic-bezier(.22,1,.36,1) both';
+    const habs = Object.entries(state.my_role.habilidades || {});
     roleReveal.innerHTML = `
-      <div style='font-size:2.5rem;margin-bottom:8px'>${state.my_role.icon}</div>
-      <div style='font-size:.75rem;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:${col};margin-bottom:6px'>Seu Papel</div>
-      <div style='font-size:1.2rem;font-weight:900;color:#fff;margin-bottom:4px'>${state.my_role.nome}</div>
-      <div style='font-size:.82rem;color:#9ca3af;margin-bottom:12px'>${state.my_role.titulo}</div>
-      <div style='font-size:.83rem;color:#c8c8d8;line-height:1.6;text-align:left;padding:10px;background:rgba(255,255,255,.03);border-radius:10px;border:1px solid rgba(255,255,255,.08)'>${state.my_role.desc}</div>`;
+      <div style='font-size:2.8rem;margin-bottom:8px;animation:invPop .6s cubic-bezier(.22,1,.36,1) .1s both'>${state.my_role.icon}</div>
+      <div style='font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.15em;color:${col};margin-bottom:6px;animation:invSlideUp .4s ease .2s both'>Seu Papel</div>
+      <div style='font-size:1.3rem;font-weight:900;color:#fff;margin-bottom:4px;animation:invSlideUp .4s ease .25s both'>${state.my_role.nome}</div>
+      <div style='font-size:.82rem;color:#9ca3af;margin-bottom:12px;animation:invSlideUp .4s ease .3s both'>${state.my_role.titulo}</div>
+      <div style='font-size:.83rem;color:#c8c8d8;line-height:1.6;text-align:left;padding:10px;background:rgba(255,255,255,.03);border-radius:10px;border:1px solid rgba(255,255,255,.08);animation:invSlideUp .4s ease .35s both'>${state.my_role.desc}</div>
+      ${habs.length ? `<div style='margin-top:10px;display:grid;gap:4px;animation:invSlideUp .4s ease .45s both'>
+        <div style='font-size:.72rem;font-weight:800;color:${col};text-transform:uppercase;letter-spacing:.1em;margin-bottom:2px'>Habilidades</div>
+        ${habs.map(([k,h]) => `<div style='font-size:.78rem;color:#b8b8c8;padding:6px 10px;background:rgba(255,255,255,.03);border-radius:8px;border:1px solid rgba(255,255,255,.06)'>
+          ${h.uses===1?'⚡':'🔹'} <strong style='color:#fff'>${h.nome}</strong> — ${h.desc||''}
+        </div>`).join('')}
+      </div>` : ''}`;
+    try { vibrate([50, 30, 80]); } catch(e) {}
   }
 }
 
@@ -5113,7 +5593,7 @@ function invRenderInvestigation(state) {
   const duvEl = document.getElementById('inv-case-duvidas');
   if (duvEl) duvEl.innerHTML = '<div style="font-size:.8rem;color:#9ca3af;font-weight:700;margin-bottom:6px">💭 PONTOS DE DEBATE</div>' + (state.case.duvidas||[]).map(d => `<div class='inv-duvida-item'>❓ ${d}</div>`).join('');
 
-  // Evidences
+  // Evidences with weight bars
   const evList = document.getElementById('inv-evidence-list');
   if (evList) {
     const me = state.players.find(p => p.id === invGetPlayerId());
@@ -5121,52 +5601,99 @@ function invRenderInvestigation(state) {
     evList.innerHTML = (state.evidences||[]).map(ev => {
       const pct = Math.round(ev.peso * 100);
       const col = pct > 60 ? '#ef4444' : pct > 30 ? '#f59e0b' : '#6b7280';
+      const barCol = pct > 60 ? 'linear-gradient(90deg,#ef4444,#dc2626)' : pct > 30 ? 'linear-gradient(90deg,#f59e0b,#d97706)' : 'linear-gradient(90deg,#6b7280,#4b5563)';
       let btns = '';
-      if (myRole==='icaro') btns += `<button class='inv-ev-btn prim' onclick='invUseSkillOn("contestacao","${ev.id}")'>⚖️ Contestar</button>`;
-      if (myRole==='natan') btns += `<button class='inv-ev-btn danger' onclick='invUseSkillOn("marcar","${ev.id}")'>🔥 Marcar Crítica</button>`;
-      if (myRole==='icaro' && !me?.actions_used?.includes('duvida')) btns += `<button class='inv-ev-btn' onclick='invUseSkillOn("duvida","${ev.id}")'>❓ Dúvida Razoável</button>`;
+      if (myRole==='icaro') btns += `<button class='inv-ev-btn prim' onclick='invUseSkillOn("contestacao","${ev.id}")'>Contestar</button>`;
+      if (myRole==='natan') btns += `<button class='inv-ev-btn danger' onclick='invUseSkillOn("marcar","${ev.id}")'>Marcar Critica</button>`;
+      if (myRole==='luciano') btns += `<button class='inv-ev-btn' onclick='invUseSkillOn("cruzar","${ev.id}")'>Cruzar Dados</button>`;
+      if (myRole==='icaro' && !me?.actions_used?.includes('duvida')) btns += `<button class='inv-ev-btn' onclick='invUseSkillOn("duvida","${ev.id}")'>Duvida Razoavel</button>`;
+      if (myRole==='thalles') btns += `<button class='inv-ev-btn' onclick='invUseSkillOn("falha","${ev.id}")'>Falha Processual</button>`;
+      const statusTags = [];
+      if (ev.contested) statusTags.push('<span style="color:#ef4444;font-size:.7rem;font-weight:800">CONTESTADA</span>');
+      if (ev.critical) statusTags.push('<span style="color:#f59e0b;font-size:.7rem;font-weight:800">CRITICA</span>');
       return `<div class='inv-evidence-item${ev.contested?' contested':''}${ev.critical?' critical':''}'>
         <div class='inv-ev-header'>
           <span class='inv-ev-title'>${ev.titulo}</span>
-          <span class='inv-ev-peso' style='background:${col}22;border:1px solid ${col}44;color:${col}'>${pct}% peso</span>
+          <span class='inv-ev-peso' style='background:${col}22;border:1px solid ${col}44;color:${col}'>${pct}%</span>
         </div>
         <div class='inv-ev-desc'>${ev.descricao}</div>
+        <div class='inv-ev-weight-bar'><div class='inv-ev-weight-fill' style='width:${pct}%;background:${barCol}'></div></div>
+        ${statusTags.length?`<div style='margin-top:4px;display:flex;gap:6px'>${statusTags.join('')}</div>`:''}
         ${btns?`<div class='inv-ev-actions'>${btns}</div>`:''}
       </div>`;
-    }).join('') || '<div class="inv-empty">Carregando evidências...</div>';
+    }).join('') || '<div class="inv-empty">Carregando evidencias...</div>';
   }
 
-  // Players
+  // Players with status indicators
   const plList = document.getElementById('inv-players-list');
   if (plList) plList.innerHTML = state.players.map(p => {
     const col = INV.roleColors[p.role_id] || '#8b5cf6';
+    const statusClass = p.has_voted ? 'voted' : (INV.phase === 'votacao' ? 'voting' : 'online');
+    const actCount = (p.actions_used || []).length;
     return `<div class='inv-player-row'>
+      <span class='inv-player-status ${statusClass}'></span>
       <span>${p.role_icon||'👤'}</span>
-      <span style='font-size:.88rem;color:#fff;font-weight:700'>${p.name}${p.id===invGetPlayerId()?' (você)':''}</span>
+      <span style='font-size:.86rem;color:#fff;font-weight:700;flex:1'>${p.name}${p.id===invGetPlayerId()?' (voce)':''}${p.is_bot?'<span class="inv-bot-badge">BOT</span>':''}</span>
       ${p.role_name?`<span class='inv-player-row-role' style='background:${col}22;border:1px solid ${col}44;color:${col}'>${p.role_name}</span>`:''}
+      ${actCount>0?`<span style='font-size:.65rem;color:#6b7280'>${actCount} acoes</span>`:''}
     </div>`;
   }).join('');
 
-  // Actions log
+  // Actions log with improved rendering
   const logEl = document.getElementById('inv-actions-log');
-  if (logEl) logEl.innerHTML = (state.actions_log||[]).slice(-8).reverse().map(a =>
-    `<div class='inv-log-item'>${a.msg}</div>`).join('') || '<div class="inv-log-item" style="color:#4b5563">Sem ações ainda...</div>';
+  if (logEl) {
+    const logs = (state.actions_log||[]).slice(-8).reverse();
+    logEl.innerHTML = logs.map((a,i) => {
+      const isNew = i === 0 && logs.length > (INV._lastLogCount||0);
+      return `<div class='inv-log-item${isNew?" inv-action-flash":""}' style='animation:invSlideUp .2s ease ${i*0.03}s both'>${a.msg}</div>`;
+    }).join('') || '<div class="inv-log-item" style="color:#4b5563">Sem acoes ainda...</div>';
+    INV._lastLogCount = logs.length;
+  }
 
   // Timer is handled by invUpdateTimerDisplays / local timer
 
-  // Chat
+  // Chat with bot indicators and typing
   const chatEl = document.getElementById('inv-chat-messages');
   if (chatEl) {
     const msgs = state.messages || [];
-    chatEl.innerHTML = msgs.map(m => {
+    const newMsgCount = msgs.length - (INV._lastMsgCount || 0);
+    INV._lastMsgCount = msgs.length;
+    // Update chat tab badge if not viewing chat
+    if (newMsgCount > 0) {
+      INV._msgCount = (INV._msgCount || 0) + newMsgCount;
+      const chatTabBtns = document.querySelectorAll('.inv-tab');
+      if (chatTabBtns[2] && !chatTabBtns[2].classList.contains('active') && INV._msgCount > 0) {
+        const existingBadge = chatTabBtns[2].querySelector('.inv-tab-badge');
+        if (existingBadge) existingBadge.textContent = INV._msgCount;
+        else chatTabBtns[2].innerHTML += `<span class='inv-tab-badge'>${INV._msgCount}</span>`;
+      }
+    }
+    let chatHtml = msgs.map(m => {
       const col = INV.roleColors[m.role] || '#8b5cf6';
+      const botTag = m.is_bot ? '<span class="inv-bot-badge">BOT</span>' : '';
       return `<div class='inv-chat-msg'>
-        <div class='inv-chat-sender' style='color:${col}'>${m.player}</div>
+        <div class='inv-chat-sender' style='color:${col}'>${m.player}${botTag}</div>
         <div class='inv-chat-text'>${m.text}</div>
       </div>`;
     }).join('');
+    // Show typing indicators for bots that are about to chat
+    const bots = state.players.filter(p => p.is_bot);
+    if (bots.length > 0 && (INV.phase === 'investigacao' || INV.phase === 'debate')) {
+      const typingBot = bots[Math.floor(Math.random() * bots.length)];
+      if (Math.random() < 0.3) {
+        const tCol = INV.roleColors[typingBot.role_id] || '#8b5cf6';
+        chatHtml += `<div class='inv-typing-indicator'>
+          <span class='inv-typing-name' style='color:${tCol}'>${typingBot.name}</span>
+          <span class='inv-typing-dot'></span><span class='inv-typing-dot'></span><span class='inv-typing-dot'></span>
+        </div>`;
+      }
+    }
+    chatEl.innerHTML = chatHtml;
     chatEl.scrollTop = chatEl.scrollHeight;
   }
+
+  // Update contextual quick arguments based on role and phase
+  invUpdateQuickArgs(state);
 
   // Tendency (Giovanna)
   if (state.tendency) {
@@ -5191,17 +5718,37 @@ function invSetupVoteOptions(state) {
 
 function invRenderVotacao(state) {
   // Timer is handled by invUpdateTimerDisplays / local timer
-  const waitingVotes = state.players.filter(p => !p.has_voted).length;
+  const totalPlayers = state.players.length;
+  const votedPlayers = state.players.filter(p => p.has_voted).length;
+  const waitingVotes = totalPlayers - votedPlayers;
   const summaryEl = document.getElementById('inv-vote-summary');
   if (summaryEl) {
+    // Voting progress bar
+    const pct = totalPlayers > 0 ? Math.round(votedPlayers / totalPlayers * 100) : 0;
+    let html = `<div style='margin-bottom:10px'>
+      <div style='display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:4px'>
+        <span style='color:#a78bfa;font-weight:700'>Progresso da votacao</span>
+        <span style='color:#6b7280'>${votedPlayers}/${totalPlayers} votos</span>
+      </div>
+      <div class='inv-ev-weight-bar'><div class='inv-ev-weight-fill' style='width:${pct}%;background:linear-gradient(90deg,#8b5cf6,#a78bfa)'></div></div>
+    </div>`;
+    // Player voting status
+    html += `<div style='display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px'>${state.players.map(p => {
+      const col = p.has_voted ? '#34d399' : '#6b7280';
+      return `<span style='font-size:.72rem;padding:3px 8px;border-radius:6px;background:${col}15;border:1px solid ${col}30;color:${col};font-weight:700'>${p.name} ${p.has_voted?'✓':'...'}</span>`;
+    }).join('')}</div>`;
     if (INV.pendingVote.violacao !== null || INV.pendingVote.artigo || INV.pendingVote.culpado) {
       summaryEl.style.display = 'block';
-      summaryEl.innerHTML = `<strong>Seu voto:</strong><br>
-        ${INV.pendingVote.violacao !== null ? `✅ Violação: ${INV.pendingVote.violacao?'SIM':'NÃO'}<br>` : ''}
-        ${INV.pendingVote.artigo ? `📜 ${INV.pendingVote.artigo}<br>` : ''}
-        ${INV.pendingVote.culpado ? `🎯 ${INV.pendingVote.culpado}` : ''}
-        <br><small style='color:#6b7280'>${waitingVotes} jogador(es) ainda votando</small>`;
+      html += `<div style='padding:10px;border-radius:10px;background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.2)'>
+        <strong style='color:#a78bfa;font-size:.82rem'>Seu voto:</strong><br>
+        ${INV.pendingVote.violacao !== null ? `<span style='color:#34d399'>Violacao: ${INV.pendingVote.violacao?'SIM':'NAO'}</span><br>` : ''}
+        ${INV.pendingVote.artigo ? `<span style='color:#60a5fa'>${INV.pendingVote.artigo}</span><br>` : ''}
+        ${INV.pendingVote.culpado ? `<span style='color:#f59e0b'>${INV.pendingVote.culpado}</span>` : ''}
+      </div>`;
+    } else {
+      summaryEl.style.display = 'block';
     }
+    summaryEl.innerHTML = html;
     const canSubmit = INV.pendingVote.violacao !== null && INV.pendingVote.artigo && INV.pendingVote.culpado;
     const btn = document.getElementById('inv-btn-submit-vote');
     if (btn) { btn.disabled = !canSubmit; btn.style.opacity = canSubmit ? '1' : '0.4'; }
@@ -5213,22 +5760,44 @@ function invRenderResultado(state) {
   const res = state.resultado;
   const respEl = document.getElementById('inv-resposta-correta');
   if (respEl) respEl.innerHTML = `
-    <h4>✅ Resposta Correta</h4>
-    <div class='inv-resposta-item'><span>Violação</span><strong style='color:#34d399'>${res.resposta_correta.violacao?'SIM':'NÃO'}</strong></div>
+    <h4 style='margin-bottom:10px'>Resposta Correta</h4>
+    <div class='inv-resposta-item'><span>Violacao</span><strong style='color:#34d399'>${res.resposta_correta.violacao?'SIM':'NAO'}</strong></div>
     <div class='inv-resposta-item'><span>Artigo</span><strong style='color:#34d399'>${res.resposta_correta.artigo}</strong></div>
-    <div class='inv-resposta-item'><span>Responsável</span><strong style='color:#34d399'>${res.resposta_correta.culpado}</strong></div>
+    <div class='inv-resposta-item'><span>Responsavel</span><strong style='color:#34d399'>${res.resposta_correta.culpado}</strong></div>
     <div class='inv-resposta-item'><span>Direito Violado</span><strong style='color:#34d399'>${res.resposta_correta.direito}</strong></div>`;
   const medals = ['🥇','🥈','🥉'];
   const rankEl = document.getElementById('inv-resultado-ranking');
-  if (rankEl) rankEl.innerHTML = res.rankings.map((p,i) => `
-    <div class='inv-rank-item'>
+  if (rankEl) rankEl.innerHTML = res.rankings.map((p,i) => {
+    const isMe = p.id === invGetPlayerId();
+    const delay = i * 0.08;
+    return `<div class='inv-rank-item${isMe?" inv-action-flash":""}' style='animation-delay:${delay}s'>
       <span class='inv-rank-pos'>${medals[i]||'🏅'}</span>
-      <div>
-        <div class='inv-rank-name'>${p.name}${p.id===invGetPlayerId()?' 👈':''}</div>
-        <div class='inv-rank-details'>${(p.details||[]).join(' • ')}</div>
+      <div style='flex:1'>
+        <div class='inv-rank-name'>${p.name}${isMe?' (voce)':''}${p.role?` <span style="font-size:.7rem;color:#6b7280">${p.role}</span>`:''}</div>
+        <div class='inv-rank-details'>${(p.details||[]).join(' | ')}</div>
       </div>
-      <div class='inv-rank-score'>${p.score} pts</div>
-    </div>`).join('');
+      <div class='inv-rank-score inv-rank-score-anim' style='animation-delay:${delay+0.2}s'>${p.score} pts</div>
+    </div>`;
+  }).join('');
+
+  // Enhanced analysis section
+  const analiseEl = document.getElementById('inv-resultado-analise');
+  if (analiseEl) {
+    const myPlayer = res.rankings.find(p => p.id === invGetPlayerId());
+    const myScore = myPlayer?.score || 0;
+    const maxScore = 100;
+    const pct = Math.round(myScore / maxScore * 100);
+    let analiseHtml = '';
+    if (pct >= 80) analiseHtml += `<div class='inv-analysis-item'><strong>Excelente!</strong> Voce demonstrou profundo conhecimento constitucional neste caso.</div>`;
+    else if (pct >= 50) analiseHtml += `<div class='inv-analysis-item'><strong>Bom trabalho!</strong> Voce acertou a maioria dos pontos, mas pode melhorar na identificacao precisa dos artigos.</div>`;
+    else analiseHtml += `<div class='inv-analysis-item'><strong>Continue estudando!</strong> Revise os artigos constitucionais relacionados a este tipo de caso.</div>`;
+    analiseHtml += `<div class='inv-analysis-item'>Caso: <strong>${res.case_title}</strong></div>`;
+    analiseHtml += `<div class='inv-analysis-item'>Sua pontuacao: <strong>${myScore}/${maxScore} pontos (${pct}%)</strong></div>`;
+    const totalPlayers = res.rankings.length;
+    const myRank = res.rankings.findIndex(p => p.id === invGetPlayerId()) + 1;
+    if (myRank > 0) analiseHtml += `<div class='inv-analysis-item'>Posicao: <strong>${myRank}o de ${totalPlayers} jogadores</strong></div>`;
+    analiseEl.innerHTML = analiseHtml;
+  }
 }
 
 function invSetVote(field, value) {
@@ -5308,6 +5877,12 @@ function invTab(name) {
     document.querySelectorAll('.inv-tab').forEach((btn,i) => {
       const names = ['case','evidence','chat'];
       btn.classList.toggle('active', names[i]===name);
+      // Clear badge when switching to that tab
+      if (names[i]===name) {
+        const badge = btn.querySelector('.inv-tab-badge');
+        if (badge) badge.remove();
+        if (name==='chat') INV._msgCount = 0;
+      }
     });
   });
 }
@@ -5341,6 +5916,60 @@ document.addEventListener('click', e => {
   btn.style.setProperty('--ry', ry);
 });
 
+
+/* ── CINEMATIC PHASE TRANSITION OVERLAY ─────────────────────────────── */
+function invShowPhaseTransition(icon, title, sub) {
+  const existing = document.querySelector('.inv-phase-transition');
+  if (existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.className = 'inv-phase-transition';
+  overlay.innerHTML = `<div class='ipt-icon'>${icon}</div><div class='ipt-title'>${title}</div><div class='ipt-sub'>${sub}</div>`;
+  document.body.appendChild(overlay);
+  setTimeout(() => overlay.remove(), 2200);
+}
+
+/* ── CONTEXTUAL QUICK ARGUMENTS BY ROLE & PHASE ───────────────────── */
+function invUpdateQuickArgs(state) {
+  const argsEl = document.getElementById('inv-quick-args');
+  if (!argsEl) return;
+  const role = state.my_role?.id;
+  const phase = INV.phase;
+  const genericArgs = {
+    investigacao: [
+      'Essa evidencia parece relevante',
+      'Precisamos analisar melhor esse ponto',
+      'Alguem verificou esse artigo?',
+      'Isso pode ser uma violacao constitucional'
+    ],
+    debate: [
+      'Concordo com esse argumento',
+      'Discordo, veja o artigo constitucional',
+      'Precisamos considerar o contexto',
+      'As evidencias apontam para violacao'
+    ]
+  };
+  const roleArgs = {
+    icaro: ['Vou contestar essa evidencia','A defesa precisa ser ouvida','Ha duvida razoavel aqui'],
+    natan: ['Essa evidencia e critica','A acusacao e clara nesse ponto','Vou marcar essa evidencia'],
+    luciano: ['Vou cruzar os dados','A investigacao aponta para isso','Preciso de mais tempo para analisar'],
+    giovanna: ['A tendencia do tribunal e relevante','Vou verificar a jurisprudencia','O precedente judicial e claro'],
+    thalles: ['Vou verificar se ha falha processual','A convocacao foi feita corretamente?','O procedimento foi respeitado?'],
+    izabella: ['Do ponto de vista constitucional...','A CF/88 e clara sobre isso','Preciso consultar a doutrina'],
+    dilerman: ['Vou fazer uma intervencao formal','A Procuradoria opina que...','Esse caso precisa de atencao especial']
+  };
+  const phaseList = genericArgs[phase] || genericArgs.investigacao;
+  const roleList = roleArgs[role] || [];
+  let html = '';
+  // Role-specific arguments first
+  roleList.forEach(arg => {
+    html += `<button class='inv-arg-btn role-specific' onclick='invSendArg("${arg.replace(/"/g,"&quot;")}")'>${arg}</button>`;
+  });
+  // Generic arguments
+  phaseList.forEach(arg => {
+    html += `<button class='inv-arg-btn' onclick='invSendArg("${arg.replace(/"/g,"&quot;")}")'>${arg}</button>`;
+  });
+  argsEl.innerHTML = html;
+}
 
 function invPlayAgain() {
   if (INV.pollTimer) { clearInterval(INV.pollTimer); INV.pollTimer = null; }
