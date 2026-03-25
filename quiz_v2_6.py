@@ -169,11 +169,13 @@ def _calc_resultado(room: dict):
             pts += 20; details.append("✅ Violacao: +20")
         else:
             details.append("❌ Violacao: 0")
-        if v.get("artigo") and v.get("artigo","").strip().lower() in correct["artigo"].lower():
-            pts += 50; details.append("✅ Artigo: +50")
+        player_artigo = v.get("artigo", "").strip().lower().replace("\u00ba", "").replace(".", "").replace(" ", "")
+        correct_artigo = correct["artigo"].lower().replace("\u00ba", "").replace(".", "").replace(" ", "")
+        if player_artigo and (player_artigo == correct_artigo or player_artigo in correct_artigo or correct_artigo in player_artigo):
+            pts += 50; details.append("\u2705 Artigo: +50")
         else:
-            details.append(f"❌ Artigo correto: {correct['artigo']}")
-        if v.get("culpado","").strip().lower() in correct["culpado"].lower():
+            details.append(f"\u274c Artigo correto: {correct['artigo']}")
+        if v.get("culpado", "").strip().lower() == correct["culpado"].strip().lower():
             pts += 30; details.append("✅ Culpado: +30")
         else:
             details.append(f"❌ Culpado: {correct['culpado']}")
@@ -299,26 +301,38 @@ def _tick_rooms():
     """Background thread: advance phases by time."""
     while True:
         time.sleep(3)
-        with INV_LOCK:
-            now = time.time()
-            dead = []
-            for rid, room in INVESTIGATION_ROOMS.items():
-                # Remove empty/stale rooms
-                if now - room.get("last_action", now) > 3600:
-                    dead.append(rid)
-                    continue
-                phase = room["phase"]
-                # Tick bots (handles auto-fill and auto-vote)
-                _tick_bots(room, now)
-                if phase in ("lobby","resultado"):
-                    continue
-                dur = PHASE_DURATIONS.get(phase, 60)
-                elapsed = now - room["phase_start"]
-                if elapsed >= dur:
-                    _advance_phase(room)
-                    room["last_action"] = now
-            for rid in dead:
-                del INVESTIGATION_ROOMS[rid]
+        try:
+            with INV_LOCK:
+                now = time.time()
+                dead = []
+                for rid, room in INVESTIGATION_ROOMS.items():
+                    try:
+                        # Remove empty/stale rooms
+                        if now - room.get("last_action", now) > 3600:
+                            dead.append(rid)
+                            continue
+                        # Tick bots (handles auto-fill and auto-vote)
+                        _tick_bots(room, now)
+                        # Re-read phase AFTER _tick_bots (it may have advanced)
+                        phase = room["phase"]
+                        if phase in ("lobby", "resultado"):
+                            continue
+                        dur = PHASE_DURATIONS.get(phase, 60)
+                        elapsed = now - room["phase_start"]
+                        if elapsed >= dur:
+                            _advance_phase(room)
+                            room["last_action"] = now
+                        # Auto-advance votacao if all players have voted
+                        if room["phase"] == "votacao":
+                            if all(p.get("vote") is not None for p in room["players"]):
+                                _advance_phase(room)
+                                room["last_action"] = now
+                    except Exception as e:
+                        print(f"Tick erro sala {rid}: {e}")
+                for rid in dead:
+                    del INVESTIGATION_ROOMS[rid]
+        except Exception as e:
+            print(f"Tick rooms erro geral: {e}")
 
 # Start background phase ticker
 _ticker_thread = threading.Thread(target=_tick_rooms, daemon=True)
@@ -434,7 +448,18 @@ def inv_action(room_id: str, player_id: str, action: str, target: str = "") -> d
         me = next((p for p in room["players"] if p["id"] == player_id), None)
         if not me:
             return {"ok": False, "msg": "Jogador nao encontrado"}
-        if action != "ready" and room["phase"] not in ("investigacao", "debate"):
+        # Handle "ready" action BEFORE role validation (players have no role in lobby)
+        if action == "ready":
+            me["ready"] = True
+            msg_action = f"\u2705 {me['name']} esta pronto"
+            # Start game if all ready and at least 2 players
+            if all(p.get("ready") for p in room["players"]) and len(room["players"]) >= 2:
+                _advance_phase(room)
+            me.setdefault("actions_used", []).append(action)
+            room.setdefault("actions_log", []).append({"ts": time.time(), "msg": msg_action})
+            room["last_action"] = time.time()
+            return {"ok": True, "msg": msg_action}
+        if room["phase"] not in ("investigacao", "debate"):
             return {"ok": False, "msg": "Fase incorreta para acoes"}
         used = me.get("actions_used", [])
         role = me.get("role")
@@ -487,12 +512,6 @@ def inv_action(room_id: str, player_id: str, action: str, target: str = "") -> d
             msg_action = f"🏛️ {me['name']} analisou impacto coletivo do caso"
         elif action == "falha":
             msg_action = f"📊 {me['name']} identificou falha processual!"
-        elif action == "ready":
-            me["ready"] = True
-            msg_action = f"✅ {me['name']} esta pronto"
-            # Start game if all ready
-            if all(p.get("ready") for p in room["players"]) and len(room["players"]) >= 2:
-                _advance_phase(room)
         else:
             if not msg_action:
                 msg_action = f"⚡ {me['name']} usou {hab['nome']}"
