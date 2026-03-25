@@ -138,15 +138,20 @@ def _assign_roles(room: dict):
     for i, p in enumerate(room["players"]):
         p["role"] = roles[i % len(roles)]["id"]
 
+PHASE_ORDER = ["lobby", "intro", "investigacao", "debate", "votacao", "resultado"]
+
 def _advance_phase(room: dict):
-    phases = ["lobby", "intro", "investigacao", "debate", "votacao", "resultado"]
     cur = room["phase"]
     if cur == "resultado":
         return
-    idx = phases.index(cur) if cur in phases else 0
-    nxt = phases[min(idx + 1, len(phases) - 1)]
+    idx = PHASE_ORDER.index(cur) if cur in PHASE_ORDER else 0
+    nxt = PHASE_ORDER[min(idx + 1, len(PHASE_ORDER) - 1)]
+    if nxt == cur:
+        return
+    print(f"[INV] Sala {room.get('id','?')}: {cur} -> {nxt}")
     room["phase"] = nxt
     room["phase_start"] = time.time()
+    room["last_action"] = time.time()
     if nxt == "investigacao":
         _assign_roles(room)
         _add_hidden_evidence(room)
@@ -265,20 +270,16 @@ def _tick_bots(room: dict, now: float):
         bots   = [p for p in room["players"] if p.get("is_bot")]
         elapsed = now - room["created_at"]
 
-        # 1. Preencher com bots após BOT_WAIT_SECONDS
+        # 1. Preencher com bots apos BOT_WAIT_SECONDS
         if room.get("bots_enabled", True) and elapsed >= BOT_WAIT_SECONDS:
             _fill_with_bots(room)
-            # Re-listar após preenchimento
             bots = [p for p in room["players"] if p.get("is_bot")]
 
-        # 2. Bots são sempre "prontos"
+        # 2. Bots sao sempre "prontos"
         for p in bots:
             p["ready"] = True
 
-        # 3. Auto-iniciar quando:
-        #    a) Há pelo menos 1 humano + 1 bot, e o humano clicou Pronto
-        #    OU
-        #    b) Bots entraram há mais de 5s e há pelo menos 2 jogadores no total
+        # 3. Auto-iniciar
         total = len(room["players"])
         all_humans_ready = all(p.get("ready") for p in humans) if humans else False
         bots_just_filled = len(bots) > 0 and elapsed >= BOT_WAIT_SECONDS + 5
@@ -289,9 +290,10 @@ def _tick_bots(room: dict, now: float):
         )
         if should_start:
             _advance_phase(room)
+            return  # phase changed, skip further checks this tick
 
-    # Auto-votar na fase de votação
-    if phase == "votacao":
+    # Auto-votar na fase de votacao (re-read phase in case it changed)
+    if room["phase"] == "votacao":
         elapsed_phase = now - room["phase_start"]
         if elapsed_phase >= 15:
             _bot_vote(room)
@@ -300,12 +302,12 @@ def _tick_bots(room: dict, now: float):
 def _tick_rooms():
     """Background thread: advance phases by time."""
     while True:
-        time.sleep(3)
+        time.sleep(2)
         try:
             with INV_LOCK:
                 now = time.time()
                 dead = []
-                for rid, room in INVESTIGATION_ROOMS.items():
+                for rid, room in list(INVESTIGATION_ROOMS.items()):
                     try:
                         # Remove empty/stale rooms
                         if now - room.get("last_action", now) > 3600:
@@ -313,26 +315,22 @@ def _tick_rooms():
                             continue
                         # Tick bots (handles auto-fill and auto-vote)
                         _tick_bots(room, now)
-                        # Re-read phase AFTER _tick_bots (it may have advanced)
-                        phase = room["phase"]
-                        if phase in ("lobby", "resultado"):
-                            continue
-                        dur = PHASE_DURATIONS.get(phase, 60)
-                        elapsed = now - room["phase_start"]
-                        if elapsed >= dur:
-                            _advance_phase(room)
-                            room["last_action"] = now
+                        # Self-healing phase advancement
+                        _check_and_advance(room, now)
                         # Auto-advance votacao if all players have voted
                         if room["phase"] == "votacao":
                             if all(p.get("vote") is not None for p in room["players"]):
                                 _advance_phase(room)
-                                room["last_action"] = now
                     except Exception as e:
+                        import traceback
                         print(f"Tick erro sala {rid}: {e}")
+                        traceback.print_exc()
                 for rid in dead:
                     del INVESTIGATION_ROOMS[rid]
         except Exception as e:
+            import traceback
             print(f"Tick rooms erro geral: {e}")
+            traceback.print_exc()
 
 # Start background phase ticker
 _ticker_thread = threading.Thread(target=_tick_rooms, daemon=True)
@@ -366,12 +364,29 @@ def inv_list_rooms() -> list:
                 out.append({"id": rid, "players": len(room["players"]), "case": room["case"]["title"]})
         return out
 
+def _check_and_advance(room: dict, now: float):
+    """Self-healing: advance phase if time expired (fallback if ticker missed it)."""
+    safety = 0
+    while safety < 6:
+        safety += 1
+        phase = room["phase"]
+        if phase in ("lobby", "resultado"):
+            break
+        dur = PHASE_DURATIONS.get(phase, 60)
+        elapsed = now - room["phase_start"]
+        if elapsed >= dur:
+            _advance_phase(room)
+        else:
+            break
+
 def inv_get_state(room_id: str, player_id: str) -> dict | None:
     with INV_LOCK:
         room = INVESTIGATION_ROOMS.get(room_id)
         if not room:
             return None
         now = time.time()
+        # Self-healing: if phase expired, advance it now
+        _check_and_advance(room, now)
         phase = room["phase"]
         dur = PHASE_DURATIONS.get(phase, 60)
         elapsed = now - room["phase_start"]
@@ -450,6 +465,8 @@ def inv_action(room_id: str, player_id: str, action: str, target: str = "") -> d
             return {"ok": False, "msg": "Jogador nao encontrado"}
         # Handle "ready" action BEFORE role validation (players have no role in lobby)
         if action == "ready":
+            if room["phase"] != "lobby":
+                return {"ok": False, "msg": "Jogo ja iniciou"}
             me["ready"] = True
             msg_action = f"\u2705 {me['name']} esta pronto"
             # Start game if all ready and at least 2 players
@@ -4775,6 +4792,8 @@ const INV = {
   roomId: null,
   phase: null,
   pollTimer: null,
+  localTimer: null,
+  localTimeLeft: null,
   lastState: null,
   waitingSince: null,
   botsEnabled: true,
@@ -4788,6 +4807,54 @@ const INV = {
     debate:'Debate', votacao:'Votação', resultado:'Resultado'
   },
 };
+
+/* Local countdown timer — ticks every second for smooth display between polls */
+function invStartLocalTimer() {
+  if (INV.localTimer) return; // already running
+  INV.localTimer = setInterval(() => {
+    if (INV.localTimeLeft !== null && INV.localTimeLeft > 0) {
+      INV.localTimeLeft = Math.max(0, INV.localTimeLeft - 1);
+      invUpdateTimerDisplays(INV.localTimeLeft);
+    }
+  }, 1000);
+}
+
+function invStopLocalTimer() {
+  if (INV.localTimer) { clearInterval(INV.localTimer); INV.localTimer = null; }
+  INV.localTimeLeft = null;
+}
+
+function invSyncTimer(serverTimeLeft) {
+  if (serverTimeLeft == null) { invStopLocalTimer(); return; }
+  INV.localTimeLeft = serverTimeLeft;
+  invStartLocalTimer();
+}
+
+function invUpdateTimerDisplays(tl) {
+  if (tl == null) return;
+  const phase = INV.phase;
+  // Global timer (top right)
+  const timerEl = document.getElementById('inv-global-timer');
+  if (timerEl) {
+    timerEl.textContent = invFmtTime(tl);
+    timerEl.style.color = tl < 15 ? '#ef4444' : '#a78bfa';
+  }
+  // Intro countdown
+  if (phase === 'intro') {
+    const cd = document.getElementById('inv-intro-countdown');
+    if (cd) { cd.textContent = Math.ceil(tl); cd.classList.toggle('urgent', tl < 10); }
+  }
+  // Investigation/Debate timer
+  if (phase === 'investigacao' || phase === 'debate') {
+    const tmEl = document.getElementById('inv-inv-timer');
+    if (tmEl) tmEl.innerHTML = `<div style='font-size:.72rem;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em'>${INV.phaseName[phase]||''}</div><div style='font-size:1.8rem;font-weight:900;color:${tl<20?"#ef4444":"#a78bfa"}'>${invFmtTime(tl)}</div>`;
+  }
+  // Votacao countdown
+  if (phase === 'votacao') {
+    const cd = document.getElementById('inv-vote-countdown');
+    if (cd) { cd.textContent = Math.ceil(tl); cd.classList.toggle('urgent', tl < 15); }
+  }
+}
 
 function invGetPlayerId() {
   if (INV.playerId) return INV.playerId;
@@ -4813,6 +4880,7 @@ function openInvestigacao() {
 function closeInvestigacao() {
   document.getElementById('inv-overlay').classList.add('hidden');
   if (INV.pollTimer) { clearInterval(INV.pollTimer); INV.pollTimer = null; }
+  invStopLocalTimer();
   INV.roomId = null; INV.phase = null;
 }
 
@@ -4882,7 +4950,7 @@ function invEnterWaiting() {
   document.getElementById('inv-my-room-code').textContent = INV.roomId;
   INV.waitingSince = Date.now();
   if (INV.pollTimer) clearInterval(INV.pollTimer);
-  INV.pollTimer = setInterval(invPoll, 2000);
+  INV.pollTimer = setInterval(invPoll, 1500);
   invPoll();
 }
 
@@ -4890,11 +4958,11 @@ async function invPoll() {
   if (!INV.roomId) return;
   try {
     const r = await fetch(`/api/inv/state?room_id=${INV.roomId}&player_id=${invGetPlayerId()}`);
-    if (!r.ok) return;
+    if (!r.ok) { console.warn('[INV] Poll falhou:', r.status); return; }
     const state = await r.json();
     INV.lastState = state;
     invRenderState(state);
-  } catch(e) {}
+  } catch(e) { console.warn('[INV] Poll erro:', e); }
 }
 
 function invRenderState(state) {
@@ -4902,11 +4970,10 @@ function invRenderState(state) {
   // Update header
   const phaseEl = document.getElementById('inv-phase-indicator');
   if (phaseEl) phaseEl.textContent = INV.phaseName[phase] || phase;
-  const timerEl = document.getElementById('inv-global-timer');
-  if (timerEl && state.time_left != null) {
-    timerEl.textContent = invFmtTime(state.time_left);
-    timerEl.style.color = state.time_left < 15 ? '#ef4444' : '#a78bfa';
-  } else if (timerEl) timerEl.textContent = '';
+  // Sync local timer with server time
+  invSyncTimer(state.time_left);
+  // Also update displays immediately with server value
+  if (state.time_left != null) invUpdateTimerDisplays(state.time_left);
 
   // Phase transitions
   if (phase !== INV.phase) {
@@ -4991,11 +5058,7 @@ function invRenderIntro(state) {
   if (t) t.textContent = state.case.title;
   if (h) h.textContent = state.case.historia;
   if (e) e.innerHTML = (state.case.envolvidos||[]).map(ev => `<span class='inv-envolvido-chip'>${ev}</span>`).join('');
-  const cd = document.getElementById('inv-intro-countdown');
-  if (cd && state.time_left != null) {
-    cd.textContent = Math.ceil(state.time_left);
-    cd.classList.toggle('urgent', state.time_left < 10);
-  }
+  // Timer is handled by invUpdateTimerDisplays / local timer
   // Show role if available
   const roleReveal = document.getElementById('inv-role-reveal');
   if (roleReveal && state.my_role) {
@@ -5089,11 +5152,7 @@ function invRenderInvestigation(state) {
   if (logEl) logEl.innerHTML = (state.actions_log||[]).slice(-8).reverse().map(a =>
     `<div class='inv-log-item'>${a.msg}</div>`).join('') || '<div class="inv-log-item" style="color:#4b5563">Sem ações ainda...</div>';
 
-  // Timer
-  const tmEl = document.getElementById('inv-inv-timer');
-  if (tmEl && state.time_left!=null) {
-    tmEl.innerHTML = `<div style='font-size:.72rem;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em'>${INV.phaseName[state.phase]||''}</div><div style='font-size:1.8rem;font-weight:900;color:${state.time_left<20?"#ef4444":"#a78bfa"}'>${invFmtTime(state.time_left)}</div>`;
-  }
+  // Timer is handled by invUpdateTimerDisplays / local timer
 
   // Chat
   const chatEl = document.getElementById('inv-chat-messages');
@@ -5131,11 +5190,7 @@ function invSetupVoteOptions(state) {
 }
 
 function invRenderVotacao(state) {
-  const cd = document.getElementById('inv-vote-countdown');
-  if (cd && state.time_left != null) {
-    cd.textContent = Math.ceil(state.time_left);
-    cd.classList.toggle('urgent', state.time_left < 15);
-  }
+  // Timer is handled by invUpdateTimerDisplays / local timer
   const waitingVotes = state.players.filter(p => !p.has_voted).length;
   const summaryEl = document.getElementById('inv-vote-summary');
   if (summaryEl) {
@@ -5289,6 +5344,7 @@ document.addEventListener('click', e => {
 
 function invPlayAgain() {
   if (INV.pollTimer) { clearInterval(INV.pollTimer); INV.pollTimer = null; }
+  invStopLocalTimer();
   INV.roomId = null; INV.phase = null;
   invShowScreen('lobby');
   invRefreshRooms();
