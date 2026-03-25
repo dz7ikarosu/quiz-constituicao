@@ -81,7 +81,7 @@ INVESTIGATION_ROLES = [
   {"id":"icaro","nome":"Icaro Specter","titulo":"Advogado da Defesa","icon":"⚖️","cor":"#3b82f6","desc":"Mestre da narrativa. Contesta evidencias e cria duvida nos demais jogadores.","habilidades":{"contestacao":{"nome":"Contestacao Juridica","cd":25,"desc":"Reduz peso de uma evidencia em 40%"},"tese":{"nome":"Construcao de Tese","cd":40,"desc":"Cria linha de defesa que sugere ausencia de violacao"},"duvida":{"nome":"Duvida Razoavel","cd":9999,"uses":1,"desc":"Remove 1 evidencia do julgamento final (uso unico)"},"reversao":{"nome":"Reversao de Narrativa","cd":9999,"uses":1,"desc":"Troca suspeita entre dois envolvidos (ultimate)"}}},
   {"id":"natan","nome":"Natan Ross","titulo":"Promotor","icon":"🔥","cor":"#ef4444","desc":"Acusacao implacavel. Marca evidencias criticas e eleva seu impacto.","habilidades":{"marcar":{"nome":"Evidencia Critica","cd":20,"desc":"Aumenta peso de uma evidencia em 50%"},"acusar":{"nome":"Acusacao Formal","cd":35,"desc":"Bloqueia tentativa de contestacao do advogado por 30s"}}},
   {"id":"luciano","nome":"Luciano Hardman","titulo":"Delegado","icon":"🕵️","cor":"#f59e0b","desc":"Investigador nato. Desvenda evidencias ocultas que outros nao encontram.","habilidades":{"desbloquear":{"nome":"Investigacao Profunda","cd":45,"desc":"Revela evidencia oculta do caso"},"cruzar":{"nome":"Cruzamento de Dados","cd":30,"desc":"Mostra conexao entre duas evidencias"}}},
-  {"id":"giovanna","nome":"Giovanna Pearson","titulo":"Juiza","icon":"👩‍⚖️","cor":"#8b5cf6","desc":"Seu voto vale dobrado. Pode ver tendencia dos votos dos outros.","habilidades":{"ver":{"nome":"Leitura do Juri","cd":30,"desc":"Revela tendencia de votos dos outros jogadores"},"peso":{"nome":"Voto Qualificado","cd":9999,"uses":1,"desc":"Seu proximo voto vale 2x (uso unico)"}}},
+  {"id":"giovanna","nome":"Giovanna Pearson","titulo":"Juiza","icon":"⚖️","cor":"#8b5cf6","desc":"Seu voto vale dobrado. Pode ver tendencia dos votos dos outros.","habilidades":{"ver":{"nome":"Leitura do Juri","cd":30,"desc":"Revela tendencia de votos dos outros jogadores"},"peso":{"nome":"Voto Qualificado","cd":9999,"uses":1,"desc":"Seu proximo voto vale 2x (uso unico)"}}},
   {"id":"thalles","nome":"Thalles Litt","titulo":"Pregoeiro","icon":"📊","cor":"#10b981","desc":"Especialista em falhas administrativas e processuais.","habilidades":{"falha":{"nome":"Falha Processual","cd":35,"desc":"Revela falha administrativa no caso que pode mudar o desfecho"},"anular":{"nome":"Nulidade","cd":50,"desc":"Questiona a validade de uma evidencia por vicio formal"}}},
   {"id":"izabella","nome":"Izabella Zane","titulo":"Consultora Juridica","icon":"📚","cor":"#ec4899","desc":"Sugere artigos e fundamenta teorias. Ajuda o time a acertar.","habilidades":{"sugerir":{"nome":"Fundamentacao","cd":20,"desc":"Sugere 2 artigos constitucionais possiveis para o caso"},"analisar":{"nome":"Analise de Risco","cd":30,"desc":"Mostra probabilidade de acerto de cada opcao de voto"}}},
   {"id":"dilerman","nome":"Dilerman Forstman","titulo":"Procurador","icon":"🏛️","cor":"#f97316","desc":"Analisa impacto coletivo. Pode anular acusacoes fracas.","habilidades":{"impacto":{"nome":"Impacto Coletivo","cd":25,"desc":"Mostra quantas pessoas seriam afetadas pela decisao"},"anular_fraca":{"nome":"Anular Acusacao Fraca","cd":9999,"uses":1,"desc":"Se provas sao insuficientes, pode anular acusacao (ultimate)"}}},
@@ -194,6 +194,80 @@ def _calc_resultado(room: dict):
         "case_title": case["title"],
     }
 
+
+# ── BOT SYSTEM ────────────────────────────────────────────────────────────────
+import random as _random
+
+BOT_NAMES = ["Dr. Cunha","Dra. Alves","Prof. Lima","Adv. Torres","Min. Costa","Proc. Neves","Del. Braga"]
+BOT_WAIT_SECONDS = 60   # fill with bots after 60s without enough players
+
+def _make_bot_player(bot_name: str) -> dict:
+    return {
+        "id": "BOT_" + bot_name.replace(" ", "_").upper(),
+        "name": bot_name,
+        "role": None,
+        "score": 0,
+        "ready": True,
+        "vote": None,
+        "actions_used": [],
+        "joined_at": time.time(),
+        "is_bot": True,
+    }
+
+def _fill_with_bots(room: dict):
+    """Add bots until room has at least 3 players (min viable game)."""
+    existing_bots = {p["id"] for p in room["players"] if p.get("is_bot")}
+    available = [n for n in BOT_NAMES
+                 if "BOT_" + n.replace(" ","_").upper() not in existing_bots]
+    _random.shuffle(available)
+    needed = max(0, 3 - len(room["players"]))
+    for i in range(min(needed, len(available))):
+        room["players"].append(_make_bot_player(available[i]))
+    room["last_action"] = time.time()
+
+def _bot_vote(room: dict):
+    """Make bots vote with plausible (but imperfect) answers."""
+    case = room["case"]
+    correct = case["resposta"]
+    all_articles = [
+        "Art. 5º, IV","Art. 5º, X","Art. 5º, XI","Art. 5º, III",
+        "Art. 5º, LV","Art. 5º, IX","Art. 5º caput","Art. 37","Art. 7º",
+    ]
+    envolvidos = case["envolvidos"]
+    for p in room["players"]:
+        if not p.get("is_bot"):
+            continue
+        if p.get("vote"):
+            continue
+        # 70% chance of correct violacao, 60% correct artigo, 55% correct culpado
+        violacao = correct["violacao"] if _random.random() < 0.70 else (not correct["violacao"])
+        artigo   = correct["artigo"]   if _random.random() < 0.60 else _random.choice(all_articles)
+        culpado  = correct["culpado"]  if _random.random() < 0.55 else _random.choice(envolvidos)
+        p["vote"] = {"violacao": violacao, "artigo": artigo, "culpado": culpado}
+
+def _tick_bots(room: dict, now: float):
+    """Called every tick: fill bots if needed, auto-vote when voting."""
+    phase = room["phase"]
+    humans = [p for p in room["players"] if not p.get("is_bot")]
+    # Only fill if we have at least 1 human and been waiting > BOT_WAIT_SECONDS
+    if phase == "lobby" and len(room["players"]) < 3:
+        elapsed_since_create = now - room["created_at"]
+        if elapsed_since_create >= BOT_WAIT_SECONDS:
+            _fill_with_bots(room)
+    # Auto-ready bots in lobby
+    if phase == "lobby":
+        for p in room["players"]:
+            if p.get("is_bot"):
+                p["ready"] = True
+        if len(room["players"]) >= 2 and all(p.get("ready") for p in room["players"]):
+            _advance_phase(room)
+    # Auto-vote in votacao phase
+    if phase == "votacao":
+        elapsed = now - room["phase_start"]
+        if elapsed >= 15:  # bots vote after 15s
+            _bot_vote(room)
+# ── END BOT SYSTEM ────────────────────────────────────────────────────────────
+
 def _tick_rooms():
     """Background thread: advance phases by time."""
     while True:
@@ -207,6 +281,8 @@ def _tick_rooms():
                     dead.append(rid)
                     continue
                 phase = room["phase"]
+                # Tick bots (handles auto-fill and auto-vote)
+                _tick_bots(room, now)
                 if phase in ("lobby","resultado"):
                     continue
                 dur = PHASE_DURATIONS.get(phase, 60)
@@ -273,6 +349,7 @@ def inv_get_state(room_id: str, player_id: str) -> dict | None:
                 "ready": p.get("ready", False),
                 "has_voted": p.get("vote") is not None,
                 "actions_used": p.get("actions_used", []),
+                "is_bot": p.get("is_bot", False),
             })
         # Build evidences for this phase
         evidences = []
@@ -433,17 +510,17 @@ def inv_chat(room_id: str, player_id: str, msg_text: str) -> dict:
 # ── END INVESTIGATION MULTIPLAYER ─────────────────────────────────────────────
 
 QUESTIONS = [
-    # â”€â”€ NIVEL 1 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    {"level":1,"q":"O Art. 5, paragrafo 1, da Constituicao de 1988 estabelece que as normas definidoras dos direitos e garantias fundamentais possuem:","o":["Aplicacao imediata","Aplicacao condicionada a lei complementar","Aplicacao apenas subsidiaria","Aplicacao restrita ao Judiciario"],"a":0,"hint":"A Constituicao quis maximizar a eficacia dos direitos fundamentais.","ref":"Art. 5, Â§1","note":"As normas definidoras dos direitos e garantias fundamentais tem aplicacao imediata.","exp":"O dispositivo afasta a ideia de que direitos fundamentais dependem sempre de regulamentacao para produzir efeitos."},
-    {"level":1,"q":"Tratados e convencoes internacionais sobre direitos humanos aprovados em cada Casa do Congresso, em dois turnos, por tres quintos dos votos, equivalem a:","o":["Lei ordinaria federal","Lei complementar federal","Emenda constitucional","Decreto autonomo"],"a":2,"hint":"A Constituicao criou um procedimento reforcado para certos tratados de direitos humanos.","ref":"Art. 5, Â§3","note":"O texto constitucional equipara esses tratados a emendas constitucionais.","exp":"Nao basta tratar de direitos humanos; o tratado precisa cumprir o rito qualificado previsto na propria Constituicao."},
-    {"level":1,"q":"O Art. 5, paragrafo 2, indica que os direitos e garantias expressos na Constituicao:","o":["Formam rol taxativo e exaustivo","Excluem direitos oriundos de tratados","Nao excluem outros decorrentes do regime, dos principios e dos tratados adotados pelo Brasil","Dependem de lei para serem reconhecidos"],"a":2,"hint":"O sistema constitucional brasileiro e materialmente aberto.","ref":"Art. 5, Â§2","note":"O rol de direitos fundamentais nao e fechado nem puramente enumerativo.","exp":"A Constituicao admite direitos materialmente fundamentais fora do texto literal do caput e dos incisos do Art. 5."},
-    {"level":1,"q":"Qual materia e protegida como clausula petrea pelo Art. 60, paragrafo 4?","o":["Direitos e garantias individuais","Plano plurianual","Competencia residual dos municipios","Estrutura administrativa de ministerios"],"a":0,"hint":"A resposta protege o nucleo duro do constitucionalismo liberal-democratico.","ref":"Art. 60, Â§4","note":"Direitos e garantias individuais nao podem ser abolidos sequer por emenda.","exp":"A Constituicao impede reformas que ataquem o nucleo essencial de direitos e garantias, protegendo a ordem constitucional contra autodestruicao."},
+    # ── NIVEL 1 ────────────────────────────────────────────────────────────────
+    {"level":1,"q":"O Art. 5, paragrafo 1, da Constituicao de 1988 estabelece que as normas definidoras dos direitos e garantias fundamentais possuem:","o":["Aplicacao imediata","Aplicacao condicionada a lei complementar","Aplicacao apenas subsidiaria","Aplicacao restrita ao Judiciario"],"a":0,"hint":"A Constituicao quis maximizar a eficacia dos direitos fundamentais.","ref":"Art. 5, §1","note":"As normas definidoras dos direitos e garantias fundamentais tem aplicacao imediata.","exp":"O dispositivo afasta a ideia de que direitos fundamentais dependem sempre de regulamentacao para produzir efeitos."},
+    {"level":1,"q":"Tratados e convencoes internacionais sobre direitos humanos aprovados em cada Casa do Congresso, em dois turnos, por tres quintos dos votos, equivalem a:","o":["Lei ordinaria federal","Lei complementar federal","Emenda constitucional","Decreto autonomo"],"a":2,"hint":"A Constituicao criou um procedimento reforcado para certos tratados de direitos humanos.","ref":"Art. 5, §3","note":"O texto constitucional equipara esses tratados a emendas constitucionais.","exp":"Nao basta tratar de direitos humanos; o tratado precisa cumprir o rito qualificado previsto na propria Constituicao."},
+    {"level":1,"q":"O Art. 5, paragrafo 2, indica que os direitos e garantias expressos na Constituicao:","o":["Formam rol taxativo e exaustivo","Excluem direitos oriundos de tratados","Nao excluem outros decorrentes do regime, dos principios e dos tratados adotados pelo Brasil","Dependem de lei para serem reconhecidos"],"a":2,"hint":"O sistema constitucional brasileiro e materialmente aberto.","ref":"Art. 5, §2","note":"O rol de direitos fundamentais nao e fechado nem puramente enumerativo.","exp":"A Constituicao admite direitos materialmente fundamentais fora do texto literal do caput e dos incisos do Art. 5."},
+    {"level":1,"q":"Qual materia e protegida como clausula petrea pelo Art. 60, paragrafo 4?","o":["Direitos e garantias individuais","Plano plurianual","Competencia residual dos municipios","Estrutura administrativa de ministerios"],"a":0,"hint":"A resposta protege o nucleo duro do constitucionalismo liberal-democratico.","ref":"Art. 60, §4","note":"Direitos e garantias individuais nao podem ser abolidos sequer por emenda.","exp":"A Constituicao impede reformas que ataquem o nucleo essencial de direitos e garantias, protegendo a ordem constitucional contra autodestruicao."},
     {"level":1,"q":"A afirmacao de que todo poder emana do povo e por ele sera exercido diretamente ou por representantes eleitos traduz qual vetor constitucional?","o":["Soberania popular","Separacao rigida de poderes","Legalidade estrita tributaria","Federalismo cooperativo"],"a":0,"hint":"A regra conecta legitimidade do poder e democracia.","ref":"Art. 1, paragrafo unico","note":"A origem do poder politico e popular, e nao burocratica.","exp":"O dispositivo funda o Estado Democratico de Direito em uma base de legitimidade popular."},
     {"level":1,"q":"No plano dogmatico, a afirmacao correta sobre direitos fundamentais e:","o":["Sao absolutos em qualquer colisao","Tem eficacia apenas nas relacoes Estado-individuo","Podem irradiar efeitos tambem nas relacoes privadas","Valem apenas para brasileiros natos"],"a":2,"hint":"Pense na eficacia horizontal dos direitos fundamentais.","ref":"Art. 5 e teoria da eficacia horizontal","note":"A protecao dos direitos fundamentais pode repercutir tambem em relacoes entre particulares.","exp":"A leitura contemporanea da Constituicao reconhece que direitos fundamentais tambem condicionam relacoes privadas em maior ou menor grau."},
     {"level":1,"q":"A leitura contemporanea do principio da igualdade autoriza concluir que:","o":["A Constituicao so admite igualdade formal","Tratamentos desiguais sao sempre inconstitucionais","A igualdade pode justificar diferenciacoes normativas quando fundadas em criterio constitucionalmente legitimo","A igualdade impede qualquer politica publica de inclusao"],"a":2,"hint":"A igualdade material busca reduzir assimetrias injustificadas.","ref":"Art. 5, caput","note":"A igualdade constitucional nao se reduz a uniformidade cega.","exp":"A isonomia constitucional permite diferenciacoes justificadas para promover equilibrio e impedir discriminacoes arbitrarias."},
     {"level":1,"q":"Segundo a doutrina e a jurisprudencia do STF, direitos fundamentais podem ser restringidos por lei desde que:","o":["A restricao seja total e definitiva","Preservem o nucleo essencial e respeitem a proporcionalidade","O Executivo concorde com a restricao","A restricao abranja apenas estrangeiros"],"a":1,"hint":"Ha um limite que nem o legislador pode ultrapassar.","ref":"Art. 5 e teoria do nucleo essencial","note":"A restricao legislativa de direito fundamental deve respeitar o nucleo essencial e o principio da proporcionalidade.","exp":"O STF consagrou que leis que esvaziem por completo o conteudo de um direito fundamental sao inconstitucionais por violacao ao seu nucleo essencial."},
     {"level":1,"q":"A dignidade da pessoa humana na Constituicao de 1988 esta posicionada como:","o":["Direito subjetivo passivel de ponderacao ordinaria","Fundamento da Republica Federativa do Brasil","Principio administrativo restrito ao funcionalismo publico","Norma programatica sem eficacia juridica propria"],"a":1,"hint":"Observe onde a Constituicao posiciona esse valor: no titulo sobre os fundamentos.","ref":"Art. 1, III","note":"A dignidade da pessoa humana e fundamento da Republica, com densidade normativa propria.","exp":"Ao ser erigida como fundamento, a dignidade deixa de ser apenas diretriz e passa a condicionar toda a ordem juridica."},
-    # â”€â”€ NIVEL 2 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── NIVEL 2 ────────────────────────────────────────────────────────────────
     {"level":2,"q":"Qual afirmacao esta de acordo com a liberdade de manifestacao do pensamento na Constituicao de 1988?","o":["E livre, mas o anonimato e vedado","Depende de licenca administrativa","Admite censura previa em contexto politico sensivel","So protege opinioes favoraveis a ordem constitucional"],"a":0,"hint":"A Constituicao protege a liberdade, mas exige responsabilidade.","ref":"Art. 5, IV","note":"A manifestacao do pensamento e livre, vedado o anonimato.","exp":"A vedacao ao anonimato busca permitir responsabilizacao posterior, sem abrir espaco para censura previa."},
     {"level":2,"q":"A dissolucao compulsoria de associacao civil somente pode ocorrer:","o":["Por ato do Poder Executivo em caso de interesse publico","Por decisao judicial com transito em julgado","Por deliberacao do Ministerio Publico","Por decreto legislativo simples"],"a":1,"hint":"A Constituicao protege fortemente a liberdade associativa.","ref":"Art. 5, XIX","note":"A dissolucao compulsoria depende de decisao judicial transitada em julgado.","exp":"A ordem constitucional nao admite que o Executivo desconstitua associacoes por mera conveniencia politica ou administrativa."},
     {"level":2,"q":"Quanto a inviolabilidade de domicilio, a regra correta e:","o":["A ordem judicial autoriza ingresso forcado a qualquer hora","A entrada e sempre livre em investigacao criminal","A casa e asilo inviolavel, salvo flagrante, desastre, socorro, ou ordem judicial durante o dia","A policia pode ingressar a noite com autorizacao verbal de delegado"],"a":2,"hint":"A excecao da ordem judicial tem limitacao temporal expressa.","ref":"Art. 5, XI","note":"A ordem judicial nao autoriza, por si so, ingresso noturno.","exp":"O texto constitucional foi preciso ao limitar a execucao de ordem judicial ao periodo diurno, salvo outras hipoteses constitucionais."},
@@ -453,7 +530,7 @@ QUESTIONS = [
     {"level":2,"q":"Quanto a liberdade de associacao, a alternativa correta e:","o":["A criacao de associacoes depende de autorizacao estatal","E plena a liberdade de associacao para fins licitos, vedada a de carater paramilitar","Associacoes podem ser dissolvidas por ato do prefeito","A liberdade associativa nao alcanca entidades sindicais"],"a":1,"hint":"A Constituicao dispensa autorizacao, mas nao tolera fins ilicitos ou carater paramilitar.","ref":"Art. 5, XVII e XVIII","note":"Associacoes licitas independem de autorizacao e o Estado nao pode interferir em seu funcionamento, salvo limites constitucionais.","exp":"O texto constitucional protege a autonomia associativa, mas exclui fins ilicitos e estruturas paramilitares."},
     {"level":2,"q":"A liberdade de crenca e culto religioso na Constituicao implica:","o":["Apenas tolerancia passiva do Estado","Livre exercicio dos cultos religiosos e protecao aos locais de culto e liturgias","Financiamento obrigatorio de toda religiao pelo Estado","Proibicao de simbolos religiosos em espacos publicos"],"a":1,"hint":"A liberdade religiosa tem dimensao positiva e negativa.","ref":"Art. 5, VI","note":"O livre exercicio dos cultos religiosos e garantido, e o Estado deve proteger os locais de culto e suas liturgias.","exp":"A Constituicao nao se limita a tolerar religiao; ela garante o exercicio ativo e protege os espacos de culto."},
     {"level":2,"q":"O direito de propriedade na Constituicao de 1988 esta condicionado a:","o":["Uso exclusivo do titular, sem restricoes","Atendimento de sua funcao social","Autorizacao anual do Municipio","Registro obrigatorio em cartorio para todos os bens"],"a":1,"hint":"A Constituicao nao reconhece propriedade como direito absoluto e desvinculado de responsabilidade social.","ref":"Art. 5, XXIII","note":"A propriedade atendera sua funcao social.","exp":"A funcao social e condicao intrinseca do exercicio do direito de propriedade, nao mera restricao externa."},
-    # â”€â”€ NIVEL 3 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── NIVEL 3 ────────────────────────────────────────────────────────────────
     {"level":3,"q":"No mandado de seguranca coletivo, possuem legitimidade ativa, entre outros:","o":["Apenas a Defensoria Publica e o Ministerio Publico","Partido politico com representacao no Congresso e entidade associativa constituida ha pelo menos um ano, em defesa de seus membros","Qualquer pessoa fisica em nome do povo","Somente sindicatos de servidores publicos"],"a":1,"hint":"A legitimidade coletiva tem rol constitucional especifico.","ref":"Art. 5, LXX","note":"A Constituicao legitima partido com representacao no Congresso, sindicato, entidade de classe e associacao nos termos constitucionais.","exp":"O mandado de seguranca coletivo nao foi aberto a qualquer individuo, mas a sujeitos coletivos com representatividade definida."},
     {"level":3,"q":"A acao popular pode ser proposta por:","o":["Qualquer eleitor, na qualidade de cidadao","Qualquer residente no territorio nacional","Apenas o Ministerio Publico","Apenas partido politico com representacao no Congresso"],"a":0,"hint":"A acao popular e instrumento de cidadania ativa, nao mera legitimidade difusa aberta a todos indistintamente.","ref":"Art. 5, LXXIII","note":"A legitimidade exige cidadania, e nao simples residencia.","exp":"A Constituicao atribui ao cidadao, e nao a qualquer pessoa, o poder de acionar a jurisdicao para combater ato lesivo ao patrimonio publico."},
     {"level":3,"q":"Quanto ao habeas corpus, e correto afirmar que:","o":["Serve para proteger patrimonio publico","So pode ser impetrado por advogado regularmente inscrito","Protege a liberdade de locomocao contra ilegalidade ou abuso de poder","Exige custas processuais e deposito previo"],"a":2,"hint":"Trata-se do remedio constitucional historicamente ligado ao ir e vir.","ref":"Art. 5, LXVIII","note":"O habeas corpus e gratuito e vocacionado a tutelar a liberdade de locomocao.","exp":"Seu objeto e estrito: nao protege qualquer direito, mas especificamente a liberdade de locomocao ameacada ou violada."},
@@ -462,7 +539,7 @@ QUESTIONS = [
     {"level":3,"q":"O direito de peticao aos Poderes Publicos em defesa de direitos ou contra ilegalidade ou abuso de poder e exercido:","o":["Mediante pagamento de taxa administrativa","Independentemente do pagamento de taxas","Apenas por advogado","Somente perante o Poder Judiciario"],"a":1,"hint":"A Constituicao trata essa garantia como franqueada ao administrado sem custo.","ref":"Art. 5, XXXIV, a","note":"O direito de peticao nao se condiciona ao recolhimento de taxas.","exp":"A regra busca impedir barreiras economicas ao acesso do individuo aos Poderes Publicos para defesa de direitos."},
     {"level":3,"q":"Na acao popular, salvo comprovada ma-fe, o autor fica isento de:","o":["Custas judiciais e onus da sucumbencia","Qualquer comparecimento processual","Prova documental minima","Capacidade processual"],"a":0,"hint":"A Constituicao buscou incentivar a fiscalizacao cidada sem risco economico excessivo.","ref":"Art. 5, LXXIII","note":"A isencao e afastada em caso de ma-fe.","exp":"A acao popular foi desenhada para permitir controle civico do patrimonio publico e da moralidade sem desestimular o cidadao por receio financeiro."},
     {"level":3,"q":"O mandado de seguranca individual protege direito liquido e certo nao amparado por habeas corpus ou habeas data, quando o responsavel pela ilegalidade ou abuso e:","o":["Qualquer particular com poder economico relevante","Autoridade publica ou agente de pessoa juridica no exercicio de atribuicoes do Poder Publico","Unicamente o Presidente da Republica","Apenas o Ministerio Publico Federal"],"a":1,"hint":"O polo passivo do mandado de seguranca tem definicao constitucional funcional.","ref":"Art. 5, LXIX","note":"O mandado de seguranca protege contra ato de autoridade publica ou de agente em exercicio de funcao publica.","exp":"O conceito constitucional de autoridade coatora e funcional, nao organico, alcancando agentes privados quando exercem delegacao publica."},
-    # â”€â”€ NIVEL 4 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── NIVEL 4 ────────────────────────────────────────────────────────────────
     {"level":4,"q":"A respeito da saude no texto constitucional, assinale a alternativa correta:","o":["A saude e servico facultativo do Estado","A saude e direito de todos e dever do Estado, garantida mediante politicas sociais e economicas que visem a reducao do risco de doenca e ao acesso universal e igualitario","A saude e direito apenas de contribuintes da seguridade social","A saude publica depende de autorizacao legislativa anual para existir"],"a":1,"hint":"A Constituicao vincula saude, risco e acesso universal.","ref":"Art. 196","note":"O direito a saude tem densidade normativa propria e nao e mera diretriz politica vazia.","exp":"O texto constitucional define a saude como direito fundamental social dotado de exigibilidade e vinculado a acesso universal e igualitario."},
     {"level":4,"q":"Entre os direitos dos trabalhadores urbanos e rurais, a irredutibilidade do salario admite excecao:","o":["Por ato unilateral do empregador em crise financeira","Por convencao ou acordo coletivo","Por decreto do Poder Executivo","Por regulamento interno da empresa"],"a":1,"hint":"A flexibilizacao depende de negociacao coletiva constitucionalmente reconhecida.","ref":"Art. 7, VI","note":"A irredutibilidade salarial nao e absoluta, mas a excecao tem forma constitucionalmente delimitada.","exp":"A Constituicao admite reducao salarial apenas dentro de arranjo coletivo, afastando imposicoes unilaterais do empregador ou do Estado."},
     {"level":4,"q":"Qual opcao corresponde a direito social expressamente previsto no Art. 6 apos evolucao do texto constitucional?","o":["Transporte","Protecao cambial","Intervencao administrativa","Resgate bancario"],"a":0,"hint":"Esse direito foi acrescido ao rol por emenda constitucional.","ref":"Art. 6","note":"O transporte integra o rol formal dos direitos sociais.","exp":"O Art. 6 sofreu ampliacoes ao longo do tempo, e o transporte passou a ser expressamente reconhecido como direito social."},
@@ -471,7 +548,7 @@ QUESTIONS = [
     {"level":4,"q":"O seguro-desemprego, em caso de desemprego involuntario, figura no texto constitucional como:","o":["Favor administrativo eventual","Direito dos trabalhadores urbanos e rurais","Beneficio exclusivo de servidor estatutario","Prestacao civil sem relevancia constitucional"],"a":1,"hint":"A Constituicao trata a perda involuntaria do emprego como risco social merecedor de protecao.","ref":"Art. 7, II","note":"O seguro-desemprego e garantia constitucional do trabalhador.","exp":"A previsao constitucional integra a rede minima de protecao contra vulnerabilidades associadas ao trabalho."},
     {"level":4,"q":"A assistencia social na Constituicao sera prestada a quem dela necessitar:","o":["Apenas mediante contribuicao previa ao sistema","Independentemente de contribuicao a seguridade social","Somente a trabalhadores formalmente registrados","Mediante comprovacao de renda minima por tres anos"],"a":1,"hint":"A assistencia social difere da previdencia exatamente neste ponto.","ref":"Art. 203","note":"A assistencia social independe de contribuicao previa.","exp":"A Constituicao distingue assistencia social de previdencia: aquela nao exige contribuicao; esta sim."},
     {"level":4,"q":"A protecao ao trabalho noturno na Constituicao se expressa, entre outros pontos, por:","o":["Remuneracao do trabalho noturno superior a do diurno","Livre supressao de adicional por contrato individual","Equiparacao obrigatoria entre noturno e diurno sem adicional","Proibicao absoluta de trabalho noturno"],"a":0,"hint":"A resposta esta no rol do Art. 7.","ref":"Art. 7, IX","note":"A Constituicao assegura remuneracao do trabalho noturno superior a do diurno.","exp":"O adicional noturno traduz reconhecimento constitucional do maior desgaste social e biologico associado ao labor noturno."},
-    # â”€â”€ NIVEL 5 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── NIVEL 5 ────────────────────────────────────────────────────────────────
     {"level":5,"q":"Uma autoridade municipal exige licenca previa para passeata pacifica, sem armas, em praca publica, ainda que os organizadores tenham apresentado aviso previo. A exigencia e:","o":["Constitucional, porque toda reuniao publica depende de autorizacao","Inconstitucional, porque a liberdade de reuniao exige previo aviso, nao licenca","Constitucional apenas se o tema da manifestacao for politico","Constitucional apenas se a praca for bem publico municipal"],"a":1,"hint":"O aviso organiza o espaco publico; a licenca converte liberdade em permissao estatal.","ref":"Art. 5, XVI","note":"A Constituicao exige previo aviso, nao autorizacao.","exp":"Transformar reuniao pacifica em atividade dependente de licenca esvazia uma liberdade publica expressamente protegida."},
     {"level":5,"q":"Com ordem judicial valida, policiais ingressam as 23h na residencia de investigado apenas para cumprir busca domiciliar, sem flagrante, sem desastre e sem pedido de socorro. A medida e:","o":["Constitucional, porque a ordem judicial afasta qualquer limite horario","Inconstitucional, porque a ordem judicial, por si so, legitima ingresso apenas durante o dia","Constitucional, porque toda busca criminal dispensa as restricoes do Art. 5","Constitucional, desde que haja investigacao de crime hediondo"],"a":1,"hint":"A ordem judicial nao e cheque em branco para ingresso noturno.","ref":"Art. 5, XI","note":"Sem outra excecao constitucional, a ordem judicial se cumpre durante o dia.","exp":"A garantia domiciliar estabelece limite expresso para o cumprimento de ordem judicial, preservando a intimidade domiciliar noturna."},
     {"level":5,"q":"Brasileiro naturalizado e acusado de comprovado envolvimento com trafico ilicito de entorpecentes apos a naturalizacao. Diante do texto constitucional, a extradicao:","o":["E vedada em qualquer hipotese apos a naturalizacao","E possivel, porque a Constituicao admite extradicao do naturalizado por comprovado envolvimento com trafico ilicito de entorpecentes","So seria possivel se o crime fosse politico","Depende de previa cassacao da naturalizacao pelo Executivo"],"a":1,"hint":"A regra do naturalizado tem duas hipoteses constitucionais especificas.","ref":"Art. 5, LI","note":"O trafico ilicito de entorpecentes aparece expressamente como excecao constitucional.","exp":"O texto constitucional trata o naturalizado de forma distinta do nato e preve excecao expressa para trafico ilicito de entorpecentes."},
@@ -480,19 +557,19 @@ QUESTIONS = [
     {"level":5,"q":"Grupo de servidores tem direito constitucional inviabilizado ha anos porque o legislador nao editou a norma regulamentadora indispensavel. A medida constitucional mais adequada e:","o":["Habeas data","Mandado de injuncao","Acao popular","Habeas corpus"],"a":1,"hint":"O foco aqui e a omissao normativa que bloqueia direito.","ref":"Art. 5, LXXI","note":"O mandado de injuncao foi concebido para enfrentar a omissao regulamentadora constitucionalmente relevante.","exp":"Quando a falta de norma inviabiliza direito ou liberdade constitucional, o remedio adequado e o mandado de injuncao."},
     {"level":5,"q":"Autoridade policial determina abertura generalizada de correspondencia fisica de servidores para apuracao administrativa, sem ordem judicial. A medida e:","o":["Constitucional, por se tratar de servidores publicos","Inconstitucional, porque viola a inviolabilidade da correspondencia","Constitucional, desde que haja sindicancia interna","Constitucional, se a correspondencia estiver no local de trabalho"],"a":1,"hint":"A inviolabilidade da correspondencia nao desaparece por vinculacao funcional ao Estado.","ref":"Art. 5, XII","note":"A protecao constitucional do sigilo de correspondencia nao cede a controles administrativos genericos.","exp":"A administracao nao pode afastar, por mera conveniencia investigativa, garantia constitucional de sigilo de correspondencia."},
     {"level":5,"q":"Lei municipal proibe reuniao em praca historica da cidade nos fins de semana, alegando preservacao do patrimonio. Considerando o Art. 5, XVI, essa restricao e:","o":["Plenamente constitucional, pois patrimonio historico justifica qualquer restricao","Inconstitucional, pois a Constituicao nao permite restricoes locais a liberdade de reuniao","Potencialmente inconstitucional se a restricao generalizada anular o nucleo essencial da liberdade de reuniao","Constitucional apenas se aprovada por referendum popular"],"a":2,"hint":"A colisao entre liberdade de reuniao e preservacao do patrimonio exige proporcionalidade.","ref":"Art. 5, XVI e Art. 216","note":"Restricoes a direitos fundamentais devem ser proporcionais e nao podem esvaziar o nucleo essencial da garantia.","exp":"A analise constitucional exige ponderacao: restricoes generalizadas que inviabilizam o exercicio da liberdade sao inconstitucionais, ainda que o fim seja legitimo."},
-    # â”€â”€ V/F QUESTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── V/F QUESTIONS ──────────────────────────────────────────────────────
     {"level":1,"type":"tf","q":"Direitos fundamentais sao absolutos e nao admitem nenhuma restricao.","o":["Verdadeiro","Falso"],"a":1,"hint":"Pense na possibilidade de colisao entre direitos fundamentais.","ref":"Art. 5 e doutrina","note":"Direitos fundamentais nao sao absolutos; podem ser restringidos proporcionalmente.","exp":"A doutrina e o STF reconhecem que direitos fundamentais podem colidir entre si, exigindo ponderacao e proporcionalidade.","diff":"easy"},
     
-    # â”€â”€ GOLDEN QUESTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── GOLDEN QUESTIONS ──────────────────────────────────────────────
     {"level":2,"q":"O principio da presuncao de inocencia, previsto no Art. 5, LVII, da CF/88, estabelece que ninguem sera considerado culpado ate:","o":["A denuncia do Ministerio Publico","O transito em julgado de sentenca penal condenatoria","A prisao em flagrante","O indiciamento policial"],"a":1,"hint":"A Constituicao protege o acusado ate o esgotamento das vias recursais.","ref":"Art. 5, LVII","note":"Ninguem sera considerado culpado ate o transito em julgado de sentenca penal condenatoria.","exp":"O principio da presuncao de inocencia e clausula petrea e garante que a culpa so se estabelece definitivamente apos o transito em julgado da sentenca condenatoria.","diff":"hard",    "golden":True},
         {"level":4,"q":"A Constituicao Federal de 1988 preve que a educacao e direito de todos e dever do Estado e da familia, devendo ser promovida e incentivada com a colaboracao da sociedade. Qual artigo fundamenta essa disposicao?","o":["Art. 196","Art. 205","Art. 215","Art. 225"],"a":1,"hint":"Este artigo inaugura o capitulo sobre educacao na CF/88.","ref":"Art. 205","note":"A educacao e direito de todos e dever do Estado e da familia.","exp":"O Art. 205 estabelece o dever compartilhado entre Estado, familia e sociedade na promocao da educacao, visando o pleno desenvolvimento da pessoa, seu preparo para a cidadania e qualificacao para o trabalho.","diff":"hard","golden":True},
-    # â”€â”€ BOSS QUESTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── BOSS QUESTIONS ────────────────────────────────────────────────
     {"level":1,"q":"CASO PRATICO: Um cidadao teve sua residencia invadida por policiais as 23h, sem mandado judicial e sem flagrante delito. Com base na CF/88, analise: a invasao foi constitucional?","o":["Sim, pois a policia tem poder de investigacao","Nao, pois fora das hipoteses constitucionais (flagrante, desastre, socorro) a entrada depende de ordem judicial durante o DIA","Sim, desde que haja autorizacao verbal do delegado","Nao, porque nenhuma entrada em domicilio e permitida"],"a":1,"hint":"Atencao ao periodo do dia e as excecoes constitucionais.","ref":"Art. 5, XI","note":"A casa e asilo inviolavel. A entrada com ordem judicial so e permitida durante o dia.","exp":"A CF/88 estabelece que o ingresso em domicilio alheio sem consentimento so pode ocorrer em flagrante delito, desastre, socorro, ou por determinacao judicial DURANTE O DIA. A invasao noturna sem mandado e flagrante viola diretamente o Art. 5, XI.","diff":"hard",    "boss":True},
-        {"level":2,"q":"CASO PRATICO: O Congresso aprovou emenda constitucional que permite a pena de morte para crimes hediondos. Esta emenda e constitucional?","o":["Sim, pois o Congresso tem poder constituinte derivado","Nao, pois o direito a vida e clausula petrea e nao pode ser abolido por emenda","Sim, desde que aprovada por maioria absoluta","Depende de referendum popular"],"a":1,"hint":"Considere os limites materiais ao poder de reforma constitucional.","ref":"Art. 60, Â§4, IV","note":"Os direitos e garantias individuais sao clausulas petreas.","exp":"O Art. 60, Â§4, IV proibe emendas tendentes a abolir direitos e garantias individuais. O direito a vida (Art. 5, caput) e clausula petrea. Uma emenda que institua pena de morte fora das hipoteses ja previstas (guerra declarada) seria inconstitucional por violar o nucleo imodificavel da Constituicao.","diff":"hard","boss":True},
+        {"level":2,"q":"CASO PRATICO: O Congresso aprovou emenda constitucional que permite a pena de morte para crimes hediondos. Esta emenda e constitucional?","o":["Sim, pois o Congresso tem poder constituinte derivado","Nao, pois o direito a vida e clausula petrea e nao pode ser abolido por emenda","Sim, desde que aprovada por maioria absoluta","Depende de referendum popular"],"a":1,"hint":"Considere os limites materiais ao poder de reforma constitucional.","ref":"Art. 60, §4, IV","note":"Os direitos e garantias individuais sao clausulas petreas.","exp":"O Art. 60, §4, IV proibe emendas tendentes a abolir direitos e garantias individuais. O direito a vida (Art. 5, caput) e clausula petrea. Uma emenda que institua pena de morte fora das hipoteses ja previstas (guerra declarada) seria inconstitucional por violar o nucleo imodificavel da Constituicao.","diff":"hard","boss":True},
         {"level":3,"q":"CASO PRATICO: Um juiz determinou a interceptacao telefonica de um suspeito por 60 dias, sem renovacao fundamentada. A interceptacao e legal?","o":["Sim, o juiz tem ampla discricionariedade","Nao, a Lei 9.296/96 limita a interceptacao a 15 dias, renovavel por igual periodo com fundamentacao","Sim, desde que haja inquerito policial aberto","Depende da gravidade do crime"],"a":1,"hint":"A interceptacao telefonica tem prazo legal definido e exige fundamentacao para renovacao.","ref":"Art. 5, XII e Lei 9.296/96","note":"A interceptacao telefonica tem prazo maximo de 15 dias, renovavel por decisao fundamentada.","exp":"A Lei 9.296/96 regulamenta o Art. 5, XII da CF/88. A interceptacao so pode durar 15 dias, renovavel por igual periodo mediante decisao judicial fundamentada. Uma interceptacao de 60 dias sem renovacao fundamentada viola tanto a lei quanto a garantia constitucional do sigilo das comunicacoes.","diff":"hard","boss":True},
         {"level":4,"q":"CASO PRATICO: Um municipio criou lei proibindo manifestacoes publicas em todas as pracas da cidade. Analise a constitucionalidade dessa lei.","o":["Constitucional, pois o municipio tem autonomia legislativa","Inconstitucional, pois viola a liberdade de reuniao (Art. 5, XVI) que garante reuniao pacifica em locais abertos independente de autorizacao","Constitucional, se houver justificativa de ordem publica","Depende de regulamentacao federal"],"a":1,"hint":"A liberdade de reuniao e direito fundamental que independe de autorizacao estatal.","ref":"Art. 5, XVI","note":"Todos podem reunir-se pacificamente, sem armas, em locais abertos ao publico, independentemente de autorizacao.","exp":"O Art. 5, XVI garante o direito de reuniao pacifica em locais abertos ao publico, independentemente de autorizacao, bastando previo aviso a autoridade competente. Uma lei municipal que proiba manifestacoes em todas as pracas seria inconstitucional por esvaziar o conteudo essencial desse direito fundamental.","diff":"hard","boss":True},
         {"level":5,"q":"CASO PRATICO: O STF deve julgar um caso envolvendo conflito entre liberdade de expressao e direito a honra. Um jornalista publicou reportagem com informacoes verdadeiras mas prejudiciais a reputacao de um politico. Como resolver esse conflito?","o":["A liberdade de expressao sempre prevalece sobre a honra","A honra sempre prevalece sobre a liberdade de expressao","Deve-se aplicar a tecnica da ponderacao, avaliando proporcionalidade, interesse publico e veracidade das informacoes","O caso deve ser resolvido pela legislacao infraconstitucional apenas"],"a":2,"hint":"A colisao de direitos fundamentais exige tecnica hermeneutica especifica.","ref":"Art. 5, IV, V, IX, X e principio da proporcionalidade","note":"Conflitos entre direitos fundamentais sao resolvidos pela ponderacao.","exp":"Quando dois direitos fundamentais colidem, o STF aplica a tecnica da ponderacao (proporcionalidade). Nao ha hierarquia absoluta entre direitos fundamentais. No caso, deve-se avaliar: (1) veracidade da informacao, (2) interesse publico, (3) forma da publicacao, (4) proporcionalidade da restricao. Informacoes verdadeiras sobre agentes publicos gozam de maior protecao constitucional.","diff":"hard","boss":True},
-    # â”€â”€ FILL-IN-BLANK QUESTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── FILL-IN-BLANK QUESTIONS ───────────────────────────────────────
     {"level":1,"type":"fill","q":"Complete: 'Todo poder emana do ______, que o exerce por meio de representantes eleitos ou diretamente.'","answer":"povo","hint":"Art. 1, paragrafo unico da CF/88.","ref":"Art. 1, paragrafo unico","note":"Todo poder emana do povo.","exp":"O principio da soberania popular e fundamento do Estado Democratico de Direito, estabelecendo que a legitimidade do poder politico tem origem no povo.","diff":"easy"},
     {"level":1,"type":"fill","q":"Complete: 'A Republica Federativa do Brasil tem como fundamentos: a soberania, a cidadania, a ______ da pessoa humana.'","answer":"dignidade","hint":"Art. 1, III da CF/88.","ref":"Art. 1, III","note":"A dignidade da pessoa humana e fundamento da Republica.","exp":"A dignidade da pessoa humana e um dos cinco fundamentos da Republica Federativa do Brasil, funcionando como valor-fonte de todo o ordenamento juridico.","diff":"easy"},
     {"level":2,"type":"fill","q":"Complete: 'A casa e asilo ______ do individuo, ninguem nela podendo penetrar sem consentimento do morador.'","answer":"inviolavel","hint":"Art. 5, XI da CF/88.","ref":"Art. 5, XI","note":"A casa e asilo inviolavel do individuo.","exp":"A inviolabilidade de domicilio e direito fundamental que protege a esfera de privacidade do individuo, admitindo excecoes apenas nas hipoteses taxativas da Constituicao.","diff":"easy"},
@@ -779,7 +856,7 @@ function useSkip() {
   state.used.skip = true;
   if (ui.btnSkip) ui.btnSkip.disabled = true;
   playSound('skip');
-  showAssist('â­ Pergunta pulada! Sem pontos.');
+  showAssist('⏭ Pergunta pulada! Sem pontos.');
   state.answered = true;
   clearInterval(state.ticker);
   state.wrongQs.push(state.deck[state.idx]);
@@ -792,7 +869,7 @@ function useExtraTime() {
   state.used.extraTime = true;
   if (ui.btnExtraTime) ui.btnExtraTime.disabled = true;
   state.timeLeft += 15;
-  showAssist('â± +15 segundos adicionados!');
+  showAssist('⏱ +15 segundos adicionados!');
   playSound('tick');
 }
 
@@ -1250,13 +1327,16 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
   body{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
 }
 
-/* ══════════════════════════════════════════════════════════════════════
-   INVESTIGATION GAME STYLES
-   ══════════════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════
+   INVESTIGATION GAME STYLES v3 — Enhanced & Polished
+   ═══════════════════════════════════════════════════════════════════════ */
 
-@keyframes invSlideUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:none}}
 @keyframes invFadeIn{from{opacity:0}to{opacity:1}}
-@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+@keyframes invSlideUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+@keyframes invPop{0%{opacity:0;transform:scale(.82)}70%{transform:scale(1.04)}100%{opacity:1;transform:scale(1)}}
+@keyframes invGlowPulse{0%,100%{box-shadow:0 0 12px rgba(139,92,246,.3)}50%{box-shadow:0 0 30px rgba(139,92,246,.7),0 0 55px rgba(139,92,246,.18)}}
+@keyframes invBorderGlow{0%,100%{border-color:rgba(59,130,246,.25)}50%{border-color:rgba(59,130,246,.8)}}
+@keyframes invPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
 @keyframes invGlow{0%,100%{box-shadow:0 0 10px rgba(139,92,246,.3)}50%{box-shadow:0 0 30px rgba(139,92,246,.7),0 0 60px rgba(139,92,246,.2)}}
 @keyframes invTimerUrgent{0%,100%{color:#ef4444}50%{color:#ff6b6b;text-shadow:0 0 20px rgba(239,68,68,.8)}}
 
@@ -1264,396 +1344,438 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
   position:fixed;inset:0;z-index:2500;
   background:linear-gradient(160deg,#030608 0%,#060a12 50%,#04060e 100%);
   display:flex;flex-direction:column;
-  animation:invFadeIn .4s ease both;
-  overflow:hidden;
+  animation:invFadeIn .35s cubic-bezier(.22,1,.36,1) both;
+  overflow-y:auto;
 }
-.inv-overlay.hidden{display:none!important}
+.inv-overlay *::-webkit-scrollbar{width:4px}
+.inv-overlay *::-webkit-scrollbar-track{background:rgba(255,255,255,.03)}
+.inv-overlay *::-webkit-scrollbar-thumb{background:rgba(139,92,246,.4);border-radius:999px}
 
-/* Header */
+/* HEADER */
 .inv-header{
-  display:flex;align-items:center;gap:14px;
-  padding:12px 20px;
-  background:linear-gradient(90deg,rgba(139,92,246,.1),rgba(59,130,246,.06));
-  border-bottom:1px solid rgba(139,92,246,.25);
-  flex-shrink:0;flex-wrap:wrap;gap:10px;
+  background:linear-gradient(180deg,rgba(5,9,15,.99),rgba(8,14,24,.97));
+  border-bottom:1px solid rgba(59,130,246,.2);
+  box-shadow:0 2px 20px rgba(0,0,0,.5);
+  padding:12px 16px;display:flex;align-items:center;
+  gap:14px;flex-wrap:wrap;position:sticky;top:0;z-index:100;
 }
 .inv-back-btn{
-  padding:7px 14px;border-radius:10px;border:1px solid rgba(139,92,246,.4);
-  background:rgba(139,92,246,.1);color:#c4b5fd;cursor:pointer;font-size:.85rem;font-weight:700;
-  transition:all .2s;white-space:nowrap;
+  padding:7px 14px;border-radius:10px;background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.12);color:#9ca3af;font-size:.82rem;
+  font-weight:700;cursor:pointer;transition:all .2s ease;
 }
-.inv-back-btn:hover{background:rgba(139,92,246,.2);transform:translateX(-2px)}
-.inv-header-title{font-weight:900;font-size:1rem;color:#fff;flex:1}
+.inv-back-btn:hover{background:rgba(255,255,255,.1);color:#fff}
+.inv-header-title{font-weight:900;font-size:1rem;color:#fff;letter-spacing:.02em}
 .inv-phase-indicator{
-  padding:5px 12px;border-radius:99px;font-size:.78rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;
-  background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.35);color:#a78bfa;
+  padding:4px 12px;border-radius:999px;
+  background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.4);
+  color:#a78bfa;font-size:.75rem;font-weight:800;
+  text-transform:uppercase;letter-spacing:.08em;
+  animation:invPulse 2.5s ease infinite;
 }
-.inv-timer{font-size:1.4rem;font-weight:900;color:#c4b5fd;min-width:50px;text-align:right}
+.inv-timer{
+  margin-left:auto;font-size:1.1rem;font-weight:900;
+  color:#a78bfa;min-width:48px;text-align:right;transition:color .3s;
+}
 
-/* Screens */
-.inv-screen{flex:1;overflow-y:auto;padding:16px 0;animation:invSlideUp .35s ease both}
+/* SCREEN */
+.inv-screen{transition:opacity .22s ease}
+.inv-screen.hidden{display:none}
 
-/* Cards */
-.inv-card{
-  padding:18px 20px;border-radius:16px;margin:0 16px 14px;
-  background:linear-gradient(160deg,rgba(12,16,26,.97),rgba(8,11,20,.97));
-  border:1px solid rgba(139,92,246,.2);
+/* CONTAINERS */
+.inv-lobby-container,.inv-waiting-container,.inv-vote-container,.inv-resultado-container,.inv-game-container{
+  max-width:780px;margin:0 auto;padding:14px 14px 80px;
 }
-.inv-card h3{font-size:1rem;color:#fff;margin-bottom:10px}
-.inv-card h4{font-size:.88rem;color:#c4b5fd;margin-bottom:8px}
 
-/* Inputs */
-.inv-input{
-  width:100%;padding:11px 14px;border-radius:11px;margin-bottom:10px;
-  background:rgba(255,255,255,.04);border:1px solid rgba(139,92,246,.3);
-  color:#e8edf5;font-size:.92rem;outline:none;transition:border-color .2s;
+/* LOBBY HERO */
+.inv-lobby-hero{text-align:center;padding:28px 20px 20px;animation:invSlideUp .5s cubic-bezier(.22,1,.36,1) both}
+.inv-logo{font-size:3.5rem;margin-bottom:12px;animation:invPulse 3s ease infinite;display:inline-block}
+.inv-title{
+  font-family:Georgia,serif;font-size:clamp(1.6rem,4vw,2.4rem);font-weight:900;
+  background:linear-gradient(135deg,#fff 30%,#a78bfa 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px;
 }
-.inv-input:focus{border-color:rgba(139,92,246,.7);box-shadow:0 0 20px rgba(139,92,246,.1)}
-
-/* Buttons */
-.inv-btn-primary{
-  width:100%;padding:13px;border-radius:12px;border:1px solid rgba(139,92,246,.5);
-  background:linear-gradient(135deg,rgba(139,92,246,.3),rgba(109,40,217,.2));
-  color:#e9d5ff;font-weight:800;font-size:.95rem;cursor:pointer;
-  transition:all .2s;
-}
-.inv-btn-primary:hover{background:linear-gradient(135deg,rgba(139,92,246,.45),rgba(109,40,217,.35));transform:translateY(-2px);box-shadow:0 0 20px rgba(139,92,246,.3)}
-.inv-btn-secondary{
-  width:100%;padding:12px;border-radius:12px;border:1px solid rgba(59,130,246,.4);
-  background:rgba(59,130,246,.1);color:#93c5fd;font-weight:700;font-size:.92rem;cursor:pointer;
-  transition:all .2s;
-}
-.inv-btn-secondary:hover{background:rgba(59,130,246,.2);transform:translateY(-2px)}
-.inv-btn-ghost{
-  padding:8px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.12);
-  background:rgba(255,255,255,.04);color:#9ca3af;font-size:.82rem;cursor:pointer;
-  transition:all .2s;
-}
-.inv-btn-ghost:hover{background:rgba(255,255,255,.08);color:#fff}
-
-/* Lobby */
-.inv-lobby-container{max-width:860px;margin:0 auto;padding:0 4px}
-.inv-lobby-hero{text-align:center;margin-bottom:24px;padding:24px 16px 0}
-.inv-logo{font-size:3.5rem;margin-bottom:10px;animation:pulse 3s ease infinite}
-.inv-title{font-family:Georgia,serif;font-size:clamp(1.8rem,5vw,2.8rem);color:#fff;margin-bottom:8px;background:linear-gradient(135deg,#fff 30%,#a78bfa 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.inv-subtitle{color:#8b8ba0;line-height:1.6;font-size:.95rem;max-width:500px;margin:0 auto}
+.inv-subtitle{color:#9ca3af;font-size:.9rem;line-height:1.7;max-width:500px;margin:0 auto}
 .inv-lobby-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-@media(max-width:600px){.inv-lobby-grid{grid-template-columns:1fr}}
 
-/* Rooms list */
-.inv-room-item{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:12px 14px;border-radius:12px;margin-bottom:8px;
-  background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.2);
-  animation:invSlideUp .3s ease both;
+/* CARD */
+.inv-card{
+  background:linear-gradient(160deg,rgba(15,20,30,.98),rgba(9,12,20,.98));
+  border:1px solid rgba(59,130,246,.15);border-radius:16px;padding:16px;
+  box-shadow:0 4px 20px rgba(0,0,0,.3);
+  animation:invSlideUp .35s cubic-bezier(.22,1,.36,1) both;
+  transition:transform .2s ease,box-shadow .2s ease,border-color .25s ease;
 }
-.inv-room-join-btn{
-  padding:7px 14px;border-radius:9px;border:1px solid rgba(139,92,246,.4);
-  background:rgba(139,92,246,.15);color:#c4b5fd;font-size:.8rem;font-weight:700;cursor:pointer;
-  transition:all .2s;white-space:nowrap;
+.inv-card:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(0,0,0,.4)}
+.inv-card + .inv-card{animation-delay:.06s}
+.inv-card h3{font-size:1rem;font-weight:800;color:#fff;margin-bottom:8px}
+.inv-card h4{font-size:.82rem;font-weight:800;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px}
+
+/* INPUT */
+.inv-input{
+  width:100%;padding:12px 14px;border-radius:12px;
+  background:rgba(255,255,255,.04);border:1px solid rgba(59,130,246,.25);
+  color:#e8edf5;font-size:.92rem;outline:none;margin-bottom:10px;
+  transition:border-color .2s,box-shadow .2s;
 }
-.inv-room-join-btn:hover{background:rgba(139,92,246,.3)}
-.inv-empty{
-  padding:14px;text-align:center;color:#6b7280;font-size:.85rem;
-  border:1px dashed rgba(139,92,246,.2);border-radius:12px;
+.inv-input:focus{border-color:rgba(59,130,246,.7);box-shadow:0 0 0 3px rgba(59,130,246,.12)}
+
+/* BUTTONS */
+.inv-btn-primary{
+  width:100%;padding:12px 18px;border-radius:12px;
+  background:linear-gradient(135deg,#1565c0,#0d47a1);color:#fff;
+  font-weight:800;font-size:.92rem;border:none;cursor:pointer;
+  transition:transform .18s cubic-bezier(.22,1,.36,1),box-shadow .18s ease;
+  box-shadow:0 4px 16px rgba(21,101,192,.4);position:relative;overflow:hidden;
 }
-
-/* Room code display */
-.inv-room-code-display{
-  font-size:2.4rem;font-weight:900;letter-spacing:.2em;
-  color:#a78bfa;padding:14px 20px;margin:12px 0;
-  background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.3);
-  border-radius:14px;font-family:monospace;
-  animation:invGlow 2s ease infinite;
+.inv-btn-primary:hover{transform:translateY(-2px);box-shadow:0 6px 24px rgba(21,101,192,.55)}
+.inv-btn-primary:active{transform:scale(.98)}
+.inv-btn-secondary{
+  width:100%;padding:12px 18px;border-radius:12px;
+  background:rgba(139,92,246,.12);color:#a78bfa;
+  font-weight:800;font-size:.92rem;border:1px solid rgba(139,92,246,.35);
+  cursor:pointer;transition:transform .18s ease,box-shadow .18s ease;margin-top:8px;
+  position:relative;overflow:hidden;
 }
-
-/* Waiting players */
-.inv-waiting-player{
-  display:flex;align-items:center;gap:10px;padding:10px 12px;
-  border-radius:11px;margin-bottom:6px;
-  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);
+.inv-btn-secondary:hover{transform:translateY(-2px);box-shadow:0 4px 18px rgba(139,92,246,.3)}
+.inv-btn-ghost{
+  padding:8px 14px;border-radius:10px;background:transparent;
+  color:#6b7280;font-size:.82rem;border:1px solid rgba(255,255,255,.1);
+  cursor:pointer;transition:color .2s,border-color .2s,background .2s;
 }
-.inv-waiting-player.ready{border-color:rgba(16,185,129,.3);background:rgba(16,185,129,.06)}
-.inv-player-avatar{font-size:1.4rem}
-.inv-player-name{font-size:.9rem;color:#fff;font-weight:700}
-.inv-player-status{font-size:.75rem;color:#6b7280;margin-left:auto}
-.inv-player-status.ready{color:#34d399}
+.inv-btn-ghost:hover{color:#e8edf5;border-color:rgba(255,255,255,.25);background:rgba(255,255,255,.04)}
 
-/* Waiting container */
-.inv-waiting-container{max-width:600px;margin:0 auto;padding:0 4px}
+/* VOTE BUTTONS */
+.inv-vote-btn{
+  width:100%;padding:13px 16px;border-radius:12px;
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);
+  color:#e8edf5;font-weight:700;font-size:.88rem;cursor:pointer;
+  text-align:left;margin-bottom:8px;
+  transition:transform .18s ease,border-color .2s,background .2s;
+}
+.inv-vote-btn:hover{background:rgba(59,130,246,.1);border-color:rgba(59,130,246,.4);transform:translateX(4px)}
+.inv-vote-btn.selected{
+  background:linear-gradient(135deg,rgba(59,130,246,.2),rgba(139,92,246,.15));
+  border-color:rgba(59,130,246,.7);color:#93c5fd;
+  box-shadow:0 0 14px rgba(59,130,246,.25);
+  animation:invPop .3s cubic-bezier(.22,1,.36,1) both;
+}
+.inv-vote-btn.small{font-size:.8rem;padding:10px 12px}
 
-/* Case intro */
-.inv-game-container{max-width:700px;margin:0 auto;padding:0 4px}
-.inv-case-badge{display:inline-flex;align-items:center;padding:4px 12px;border-radius:99px;font-size:.75rem;font-weight:800;text-transform:uppercase;letter-spacing:.1em;background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.35);color:#a78bfa;margin-bottom:12px}
-.inv-case-title{font-family:Georgia,serif;font-size:clamp(1.4rem,4vw,2rem);color:#fff;margin-bottom:14px}
-.inv-case-historia{color:#b0b8d0;line-height:1.75;font-size:.95rem}
-.inv-envolvidos-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
-.inv-envolvido-chip{padding:5px 12px;border-radius:99px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.25);color:#93c5fd;font-size:.8rem;font-weight:700}
+/* SKILL BUTTONS */
+.inv-skill-btn{
+  width:100%;padding:9px 12px;border-radius:10px;
+  background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.25);
+  color:#c4b5fd;font-size:.8rem;font-weight:700;cursor:pointer;
+  text-align:left;transition:all .2s ease;margin-bottom:4px;
+}
+.inv-skill-btn:hover:not(:disabled){background:rgba(139,92,246,.22);box-shadow:0 0 14px rgba(139,92,246,.3);transform:scale(1.02)}
+.inv-skill-btn:disabled{opacity:.4;cursor:not-allowed}
+.inv-skill-cd{font-size:.72rem;color:#6b7280}
 
-/* Countdown ring */
+/* COUNTDOWN RING */
 .inv-countdown-ring{
-  font-size:3rem;font-weight:900;color:#a78bfa;
   width:90px;height:90px;border-radius:50%;
-  border:3px solid rgba(139,92,246,.4);
-  display:flex;align-items:center;justify-content:center;
-  margin:0 auto 10px;
-  transition:color .3s,border-color .3s;
+  background:conic-gradient(#a78bfa var(--prog,100%),rgba(255,255,255,.06) 0);
+  display:inline-flex;align-items:center;justify-content:center;
+  font-size:1.8rem;font-weight:900;color:#fff;
+  box-shadow:0 0 24px rgba(139,92,246,.4);
+  transition:all .3s ease;animation:invGlowPulse 2s ease infinite;
 }
-.inv-countdown-ring.urgent{color:#ef4444;border-color:rgba(239,68,68,.5);animation:invTimerUrgent 1s ease infinite}
+.inv-countdown-ring.urgent{
+  background:conic-gradient(#ef4444 var(--prog,100%),rgba(255,255,255,.06) 0);
+  box-shadow:0 0 28px rgba(239,68,68,.5);color:#fca5a5;
+  animation:invTimerUrgent .6s ease infinite,invGlowPulse 1s ease infinite;
+}
 
-/* Role reveal */
-.inv-role-card{
-  padding:20px;border-radius:16px;text-align:center;margin-top:14px;
-  animation:invSlideUp .5s cubic-bezier(.22,1,.36,1) both;
+/* TABS */
+.inv-tabs{
+  display:flex;gap:4px;background:rgba(255,255,255,.03);
+  border-radius:12px;padding:4px;margin-bottom:12px;
 }
-.inv-role-display{
-  padding:14px;border-radius:14px;
-  display:flex;align-items:center;gap:12px;
-  margin:0 16px 14px;
-}
-.inv-role-icon{font-size:2.4rem}
-.inv-role-name{font-size:1rem;color:#fff;font-weight:900}
-.inv-role-title{font-size:.78rem;margin-top:2px}
-.inv-role-desc{font-size:.8rem;color:#9ca3af;margin-top:4px;line-height:1.5}
-
-/* Investigation layout */
-.inv-investigation-layout{
-  display:grid;grid-template-columns:1.4fr .85fr;gap:14px;
-  padding:0 16px;max-width:1200px;margin:0 auto;height:calc(100vh - 120px);
-}
-@media(max-width:900px){
-  .inv-investigation-layout{grid-template-columns:1fr;height:auto}
-  .inv-right-panel{order:-1}
-}
-.inv-left-panel{overflow-y:auto;padding-right:4px}
-.inv-right-panel{overflow-y:auto;display:flex;flex-direction:column;gap:10px}
-
-/* Tabs */
-.inv-tabs{display:flex;gap:6px;margin:0 16px 12px;flex-shrink:0}
 .inv-tab{
-  padding:9px 16px;border-radius:10px;border:1px solid rgba(139,92,246,.2);
-  background:transparent;color:#6b7280;font-size:.85rem;font-weight:700;cursor:pointer;
-  transition:all .2s;
+  flex:1;padding:9px 12px;border-radius:9px;background:transparent;
+  border:none;color:#6b7280;font-size:.82rem;font-weight:700;
+  cursor:pointer;transition:all .2s ease;
 }
-.inv-tab.active{background:rgba(139,92,246,.2);border-color:rgba(139,92,246,.5);color:#c4b5fd}
-.inv-tab-content{animation:invFadeIn .25s ease}
+.inv-tab.active{background:rgba(59,130,246,.2);color:#93c5fd;border:1px solid rgba(59,130,246,.3)}
 
-/* Evidence */
-.inv-evidence-item{
-  padding:14px 16px;border-radius:13px;margin-bottom:8px;
-  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);
-  transition:all .25s;cursor:default;
+/* ROOM CODE DISPLAY */
+.inv-room-code-display{
+  font-size:2rem;font-weight:900;letter-spacing:.15em;color:#a78bfa;
+  padding:14px 20px;background:rgba(139,92,246,.1);
+  border:2px dashed rgba(139,92,246,.4);border-radius:14px;
+  display:inline-block;margin:12px 0;
+  text-shadow:0 0 20px rgba(139,92,246,.5);
+  animation:invGlowPulse 2s ease infinite;
 }
-.inv-evidence-item.contested{border-color:rgba(59,130,246,.4);background:rgba(59,130,246,.05)}
-.inv-evidence-item.contested::before{content:'⚖️ CONTESTADA';display:block;font-size:.68rem;color:#60a5fa;font-weight:800;margin-bottom:6px;letter-spacing:.06em}
-.inv-evidence-item.critical{border-color:rgba(239,68,68,.45);background:rgba(239,68,68,.06)}
-.inv-evidence-item.critical::before{content:'🔥 CRÍTICA';display:block;font-size:.68rem;color:#f87171;font-weight:800;margin-bottom:6px;letter-spacing:.06em}
-.inv-ev-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
-.inv-ev-title{font-size:.9rem;font-weight:800;color:#fff}
-.inv-ev-peso{font-size:.72rem;padding:2px 8px;border-radius:99px;font-weight:800}
-.inv-ev-desc{font-size:.83rem;color:#9ca3af;line-height:1.55}
-.inv-ev-actions{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
-.inv-ev-btn{
-  padding:5px 10px;border-radius:8px;font-size:.75rem;font-weight:700;cursor:pointer;
-  border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#9ca3af;
-  transition:all .2s;
-}
-.inv-ev-btn:hover{background:rgba(255,255,255,.1);color:#fff;border-color:rgba(255,255,255,.25)}
-.inv-ev-btn.prim{border-color:rgba(139,92,246,.4);color:#c4b5fd;background:rgba(139,92,246,.1)}
-.inv-ev-btn.prim:hover{background:rgba(139,92,246,.25)}
-.inv-ev-btn.danger{border-color:rgba(239,68,68,.35);color:#f87171;background:rgba(239,68,68,.06)}
 
-/* Duvidas */
-.inv-duvidas{margin-top:14px}
+/* CASE */
+.inv-case-badge{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:5px 12px;border-radius:999px;
+  background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);
+  color:#93c5fd;font-size:.75rem;font-weight:800;
+  text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;
+}
+.inv-case-title{font-family:Georgia,serif;font-size:clamp(1.2rem,3vw,1.8rem);color:#fff;margin-bottom:12px;line-height:1.3}
+.inv-case-historia{color:#c8c8d8;line-height:1.8;font-size:.9rem}
 .inv-duvida-item{
-  padding:10px 13px;border-radius:10px;margin-bottom:6px;font-size:.84rem;
-  background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);color:#fcd34d;
+  padding:8px 12px;border-radius:9px;
+  background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.2);
+  color:#fcd34d;font-size:.82rem;margin-bottom:6px;
+}
+.inv-envolvidos-list{margin-top:12px;display:flex;flex-wrap:wrap;gap:6px}
+.inv-envolvido-chip{
+  display:inline-block;padding:5px 12px;border-radius:8px;
+  background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.25);
+  color:#93c5fd;font-size:.8rem;font-weight:700;
 }
 
-/* Chat */
-.inv-chat-messages{
-  height:220px;overflow-y:auto;padding:8px 0;margin-bottom:8px;
+/* EVIDENCE */
+.inv-evidence-item{
+  padding:14px;border-radius:12px;
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);
+  margin-bottom:10px;
+  transition:border-color .2s ease,background .2s ease,transform .2s ease;
 }
-.inv-chat-msg{
-  padding:7px 10px;border-radius:10px;margin-bottom:5px;font-size:.82rem;
-  background:rgba(255,255,255,.03);
+.inv-evidence-item:hover{transform:translateX(4px);border-color:rgba(139,92,246,.4)}
+.inv-evidence-item.contested{border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.05)}
+.inv-evidence-item.critical{border-color:rgba(245,158,11,.45);background:rgba(245,158,11,.07);box-shadow:0 0 14px rgba(245,158,11,.15)}
+.inv-ev-header{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.inv-ev-title{font-weight:800;color:#fff;font-size:.88rem}
+.inv-ev-desc{color:#9ca3af;font-size:.82rem;line-height:1.6;margin-top:6px}
+.inv-ev-peso{padding:2px 8px;border-radius:6px;font-size:.72rem;font-weight:800;white-space:nowrap}
+.inv-ev-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.inv-ev-btn{
+  padding:5px 10px;border-radius:8px;
+  background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);
+  color:#93c5fd;font-size:.75rem;font-weight:700;cursor:pointer;transition:all .18s ease;
 }
-.inv-chat-msg .inv-chat-sender{font-weight:800;font-size:.72rem;margin-bottom:2px}
-.inv-chat-msg .inv-chat-text{color:#c8c8d8;line-height:1.5}
-.inv-quick-args{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
-.inv-arg-btn{
-  padding:6px 12px;border-radius:9px;font-size:.78rem;font-weight:700;cursor:pointer;
-  border:1px solid rgba(139,92,246,.25);background:rgba(139,92,246,.08);color:#a78bfa;
-  transition:all .2s;
-}
-.inv-arg-btn:hover{background:rgba(139,92,246,.2)}
+.inv-ev-btn:hover{background:rgba(59,130,246,.2);transform:scale(1.04)}
+.inv-ev-btn.danger{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3);color:#fca5a5}
 
-/* Players list */
+/* PLAYERS */
 .inv-player-row{
   display:flex;align-items:center;gap:8px;padding:8px 10px;
-  border-radius:10px;margin-bottom:5px;
-  background:rgba(255,255,255,.025);
+  border-radius:9px;background:rgba(255,255,255,.03);margin-bottom:6px;
+  border:1px solid rgba(255,255,255,.06);transition:border-color .2s ease;
 }
-.inv-player-row-role{font-size:.72rem;padding:2px 7px;border-radius:99px;font-weight:800;margin-left:auto;white-space:nowrap}
+.inv-player-row:hover{border-color:rgba(59,130,246,.25)}
+.inv-player-row-role{padding:3px 8px;border-radius:6px;font-size:.7rem;font-weight:800}
+.inv-waiting-player{
+  display:flex;align-items:center;gap:10px;padding:8px 12px;
+  border-radius:10px;background:rgba(255,255,255,.03);
+  border:1px solid rgba(255,255,255,.07);margin-bottom:6px;
+  animation:invSlideUp .3s cubic-bezier(.22,1,.36,1) both;
+}
+.inv-waiting-player.ready{border-color:rgba(52,211,153,.25)}
 
-/* Actions log */
-.inv-actions-log{max-height:160px;overflow-y:auto}
-.inv-log-item{font-size:.78rem;color:#9ca3af;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);line-height:1.4}
+/* ROLE DISPLAY */
+.inv-role-display{display:flex;gap:14px;align-items:flex-start}
+.inv-role-name{font-weight:900;font-size:1rem;color:#fff}
+.inv-role-title{font-size:.82rem;font-weight:700}
+.inv-role-card{
+  padding:18px;border-radius:14px;margin-top:14px;text-align:center;
+  animation:invPop .5s cubic-bezier(.22,1,.36,1) both;
+}
 
-/* Timer box */
+/* CHAT */
+.inv-chat-messages{max-height:220px;overflow-y:auto;scroll-behavior:smooth}
+.inv-chat-msg{
+  padding:8px 10px;border-radius:10px;
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);
+  margin-bottom:6px;animation:invSlideUp .25s ease both;
+}
+.inv-chat-sender{font-size:.75rem;font-weight:800;margin-bottom:2px}
+.inv-chat-text{font-size:.84rem;color:#c8c8d8}
+.inv-chat-input-row{border-top:1px solid rgba(255,255,255,.07);padding-top:10px;margin-top:8px}
+.inv-quick-args{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+.inv-arg-btn{
+  padding:6px 12px;border-radius:8px;
+  background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.25);
+  color:#a78bfa;font-size:.75rem;font-weight:700;cursor:pointer;
+  transition:all .2s ease;white-space:nowrap;
+}
+.inv-arg-btn:hover{background:rgba(139,92,246,.22);transform:translateY(-1px)}
+
+/* ACTIONS LOG */
+.inv-actions-log{max-height:180px;overflow-y:auto}
+.inv-log-item{
+  padding:6px 10px;border-radius:8px;background:rgba(255,255,255,.02);
+  font-size:.78rem;color:#9ca3af;margin-bottom:4px;
+  border-left:2px solid rgba(139,92,246,.3);
+  animation:invSlideUp .25s ease both;
+}
+
+/* TIMER BOX */
 .inv-timer-box{
-  padding:12px 16px;border-radius:12px;text-align:center;
+  padding:12px 16px;border-radius:12px;
   background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.25);
-  font-size:1.6rem;font-weight:900;color:#a78bfa;
+  text-align:center;margin-bottom:12px;animation:invGlowPulse 3s ease infinite;
 }
 
-/* Vote */
-.inv-vote-container{max-width:760px;margin:0 auto;padding:0 4px}
-.inv-vote-grid{display:grid;gap:14px}
-.inv-vote-section h3{font-size:.95rem;color:#fff;margin-bottom:12px}
-.inv-vote-options{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-@media(max-width:500px){.inv-vote-options{grid-template-columns:1fr}}
-.inv-vote-btn{
-  padding:13px 16px;border-radius:13px;cursor:pointer;text-align:left;
-  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);
-  color:#c8c8d8;font-size:.88rem;font-weight:700;
-  transition:all .2s;
-}
-.inv-vote-btn:hover{background:rgba(139,92,246,.12);border-color:rgba(139,92,246,.4);color:#e9d5ff;transform:translateY(-1px)}
-.inv-vote-btn.selected{background:rgba(139,92,246,.2);border-color:rgba(139,92,246,.6);color:#e9d5ff;box-shadow:0 0 18px rgba(139,92,246,.2)}
-.inv-vote-btn.small{padding:9px 12px;font-size:.8rem}
-.inv-artigo-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
-.inv-culpado-options{display:grid;gap:8px}
-.inv-vote-summary{
-  padding:14px 16px;border-radius:12px;
-  background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.3);
-  font-size:.88rem;color:#c4b5fd;
-}
-
-/* Resultado */
-.inv-resultado-container{max-width:700px;margin:0 auto;padding:0 4px}
-.inv-resultado-hero{text-align:center;padding:24px}
-.inv-resultado-hero h2{font-family:Georgia,serif;font-size:1.6rem;color:#fff;margin-top:8px}
-.inv-resposta-correta{
-  margin-top:14px;padding:14px 18px;border-radius:12px;
-  background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.3);
-  text-align:left;
-}
-.inv-resposta-correta h4{color:#34d399;font-size:.88rem;margin-bottom:8px}
-.inv-resposta-item{display:flex;justify-content:space-between;padding:5px 0;font-size:.85rem;color:#c8c8d8;border-bottom:1px solid rgba(255,255,255,.05)}
-.inv-rank-item{
-  display:flex;align-items:center;gap:12px;padding:12px 14px;
-  border-radius:12px;margin-bottom:8px;
+/* ROOM LIST */
+.inv-room-item{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 14px;border-radius:12px;
   background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);
-  animation:invSlideUp .3s ease both;
+  margin-bottom:8px;transition:border-color .2s,background .2s;
 }
-.inv-rank-item:nth-child(1){border-color:rgba(255,215,0,.3);background:rgba(255,215,0,.04)}
+.inv-room-item:hover{border-color:rgba(59,130,246,.4);background:rgba(59,130,246,.06)}
+.inv-room-join-btn{
+  padding:7px 16px;border-radius:9px;
+  background:linear-gradient(135deg,#1565c0,#0d47a1);color:#fff;
+  font-size:.82rem;font-weight:800;border:none;cursor:pointer;
+  transition:transform .18s ease,box-shadow .18s ease;
+}
+.inv-room-join-btn:hover{transform:scale(1.04);box-shadow:0 4px 14px rgba(21,101,192,.45)}
+
+/* RESULTADO */
+.inv-resultado-hero{text-align:center;padding:24px}
+.inv-resposta-correta{margin-top:14px}
+.inv-resposta-item{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:10px 14px;border-radius:10px;
+  background:rgba(52,211,153,.07);border:1px solid rgba(52,211,153,.2);
+  margin-top:8px;font-size:.88rem;
+}
+.inv-rank-item{
+  display:flex;align-items:center;gap:12px;
+  padding:12px 14px;border-radius:12px;
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);
+  margin-bottom:8px;
+  animation:invSlideUp .35s cubic-bezier(.22,1,.36,1) both;
+}
+.inv-rank-item:nth-child(2){animation-delay:.06s}
+.inv-rank-item:nth-child(3){animation-delay:.12s}
+.inv-rank-item:first-child{border-color:rgba(255,215,0,.3);background:rgba(255,215,0,.06)}
 .inv-rank-item:nth-child(2){border-color:rgba(192,192,192,.2)}
-.inv-rank-item:nth-child(3){border-color:rgba(205,127,50,.2)}
-.inv-rank-pos{font-size:1.4rem;width:30px;text-align:center}
-.inv-rank-name{font-weight:800;color:#fff;font-size:.9rem}
-.inv-rank-score{font-size:1.3rem;font-weight:900;color:#a78bfa;margin-left:auto}
-.inv-rank-details{font-size:.72rem;color:#6b7280;margin-top:3px}
-.inv-rules-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
-@media(max-width:500px){.inv-rules-grid{grid-template-columns:1fr}}
-.inv-rule{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:10px;background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.15)}
-.inv-rule-icon{font-size:1.3rem;flex-shrink:0}
-.inv-rule small{font-size:.75rem;color:#6b7280;margin-top:3px;display:block}
-.inv-rule strong{font-size:.85rem;color:#e9d5ff}
-.inv-skill-btn{
-  display:block;width:100%;padding:10px 14px;border-radius:11px;margin-bottom:6px;
-  background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.25);
-  color:#c4b5fd;font-size:.82rem;font-weight:700;cursor:pointer;text-align:left;
-  transition:all .2s;
-}
-.inv-skill-btn:hover:not(:disabled){background:rgba(139,92,246,.2);transform:translateX(3px)}
-.inv-skill-btn:disabled{opacity:.35;cursor:not-allowed}
-.inv-skill-cd{float:right;font-size:.72rem;color:#6b7280;font-weight:400}
+.inv-rank-pos{font-size:1.5rem}
+.inv-rank-name{font-weight:800;color:#fff;font-size:.92rem}
+.inv-rank-details{font-size:.75rem;color:#6b7280;margin-top:2px}
+.inv-rank-score{margin-left:auto;font-size:1.1rem;font-weight:900;color:#ffd700;text-shadow:0 0 12px rgba(255,215,0,.4)}
 
-/* ══ END INVESTIGATION STYLES ═════════════════════════════════════════ */
+/* RULES */
+.inv-rules-grid{display:grid;gap:10px;margin-top:10px}
+.inv-rule{display:flex;align-items:flex-start;gap:12px}
+.inv-rule-icon{font-size:1.5rem}
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   ACCOUNT SYSTEM
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
-#auth-wall{
-  position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;
-  background:linear-gradient(160deg,#02040a 0%,#05090f 50%,#030710 100%);
-  animation:fadeIn .4s ease both;overflow-y:auto;padding:20px;
+/* EMPTY */
+.inv-empty{color:#4b5563;font-size:.85rem;text-align:center;padding:16px}
+
+/* VOTE SECTION */
+.inv-vote-grid{display:grid;gap:14px}
+.inv-vote-section h3{font-size:.95rem;font-weight:800;color:#fff;margin-bottom:12px}
+.inv-vote-summary{
+  padding:14px;border-radius:12px;
+  background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.25);
+  font-size:.85rem;line-height:1.8;color:#c8c8d8;margin-top:12px;
 }
-.auth-box{
-  width:min(420px,100%);background:linear-gradient(160deg,rgba(13,21,32,.98),rgba(8,14,24,.98));
-  border:1px solid rgba(21,101,192,.45);border-radius:24px;
-  box-shadow:0 0 0 1px rgba(21,101,192,.15),0 0 60px rgba(21,101,192,.15);
-  padding:36px 32px;animation:medalPop .5s cubic-bezier(.22,1,.36,1) both;
+
+/* INVESTIGATION LAYOUT */
+.inv-investigation-layout{
+  display:grid;grid-template-columns:1.4fr 1fr;gap:14px;padding:14px;
 }
-@media(max-width:480px){.auth-box{padding:24px 18px;border-radius:18px}}
-.auth-logo{text-align:center;margin-bottom:24px}
-.auth-logo .al-icon{font-size:3.5rem;margin-bottom:8px;display:block}
-.auth-logo h1{font-family:Georgia,serif;font-size:1.6rem;
-  background:linear-gradient(135deg,#fff 30%,#3b82f6 100%);
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:4px}
-.auth-logo p{font-size:.82rem;color:var(--muted)}
-.auth-tabs{display:flex;gap:6px;margin-bottom:24px;background:rgba(255,255,255,.04);
-  border-radius:12px;padding:4px}
-.auth-tab{flex:1;padding:10px;border-radius:9px;border:none;font-size:.88rem;font-weight:800;
-  cursor:pointer;transition:background .2s,color .2s;color:var(--muted);background:transparent;
-  touch-action:manipulation}
-.auth-tab.active{background:linear-gradient(135deg,#1565c0,#0d47a1);color:#fff}
-.auth-field{margin-bottom:14px}
-.auth-field label{display:block;font-size:.75rem;font-weight:800;text-transform:uppercase;
-  letter-spacing:.08em;color:var(--muted);margin-bottom:6px}
-.auth-field input{
-  width:100%;padding:13px 16px;border-radius:12px;
-  background:rgba(255,255,255,.05);border:1px solid rgba(21,101,192,.3);
-  color:var(--text);font-size:.95rem;outline:none;transition:border-color .2s,box-shadow .2s;
-  touch-action:manipulation
+.inv-left-panel,.inv-right-panel{display:grid;gap:12px;align-content:start;scroll-behavior:smooth}
+
+/* DUVIDAS */
+.inv-duvidas{margin-top:12px}
+
+/* RESPONSIVE */
+@media(max-width:700px){
+  .inv-investigation-layout{grid-template-columns:1fr}
+  .inv-lobby-grid{grid-template-columns:1fr}
+  .inv-lobby-container,.inv-waiting-container,.inv-vote-container,
+  .inv-resultado-container,.inv-game-container{padding:10px 10px 80px}
 }
-.auth-field input:focus{border-color:rgba(21,101,192,.7);box-shadow:0 0 0 3px rgba(21,101,192,.12)}
-.auth-field input::placeholder{color:var(--muted)}
-.auth-avatar-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:4px}
-.auth-av-btn{padding:12px 8px;border-radius:12px;border:2px solid rgba(255,255,255,.1);
-  background:transparent;cursor:pointer;text-align:center;font-size:1.5rem;
-  transition:border-color .2s,transform .2s;touch-action:manipulation;color:var(--text)}
-.auth-av-btn:hover{transform:scale(1.08)}
-.auth-av-btn.active{border-color:#1565c0;background:rgba(21,101,192,.12)}
-.auth-av-btn span{display:block;font-size:.65rem;color:var(--muted);margin-top:3px}
-.auth-submit{
-  width:100%;padding:14px;border-radius:13px;border:none;font-size:1rem;font-weight:800;
-  background:linear-gradient(135deg,#1565c0,#0d47a1);color:#fff;cursor:pointer;margin-top:6px;
-  transition:transform .15s,box-shadow .15s;touch-action:manipulation
+
+
+/* ── GLOBAL TRANSITIONS & ANIMATIONS v3 ─────────────────────────── */
+@keyframes slideUp    {from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+@keyframes slideDown  {from{opacity:0;transform:translateY(-18px)}to{opacity:1;transform:none}}
+@keyframes popIn      {0%{opacity:0;transform:scale(.82)}70%{transform:scale(1.04)}100%{opacity:1;transform:scale(1)}}
+@keyframes glowPulse  {0%,100%{box-shadow:0 0 12px rgba(21,101,192,.3)}50%{box-shadow:0 0 28px rgba(21,101,192,.7)}}
+@keyframes borderAnim {0%,100%{border-color:rgba(21,101,192,.35)}50%{border-color:rgba(59,130,246,.85)}}
+@keyframes ripple     {from{transform:scale(0);opacity:.55}to{transform:scale(4);opacity:0}}
+@keyframes pageEnter  {from{opacity:0;transform:translateY(14px) scale(.99)}to{opacity:1;transform:none}}
+
+/* Universal entrance for main page sections */
+#main-page {animation:pageEnter .45s cubic-bezier(.22,1,.36,1) both}
+
+/* Boxes staggered entrance */
+.box{animation:fadeUp .4s cubic-bezier(.22,1,.36,1) both}
+.box:nth-child(2){animation-delay:.05s}
+.box:nth-child(3){animation-delay:.1s}
+.box:nth-child(4){animation-delay:.16s}
+.box:nth-child(5){animation-delay:.22s}
+
+/* Level cards hover lift */
+.level-card{transition:transform .22s cubic-bezier(.22,1,.36,1),box-shadow .22s ease,border-color .22s ease}
+.level-card:hover{transform:translateY(-5px) scale(1.02);box-shadow:0 10px 32px rgba(21,101,192,.28);border-color:rgba(59,130,246,.6)}
+
+/* Option cards smoother transitions */
+.option{transition:transform .18s cubic-bezier(.22,1,.36,1),box-shadow .18s ease,background .2s ease,border-color .2s ease!important}
+.option:hover:not(:disabled){transform:translateX(6px) scale(1.005)!important}
+
+/* Feedback slide down */
+.feedback{animation:slideDown .35s cubic-bezier(.22,1,.36,1) both}
+
+/* Question card */
+.qcard.enter{animation:pageEnter .42s cubic-bezier(.22,1,.36,1) both!important}
+
+/* Profile bar shimmer */
+.profile-bar{position:relative;overflow:hidden}
+.profile-bar::after{
+  content:'';position:absolute;inset:0;border-radius:inherit;
+  background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,.04) 50%,transparent 100%);
+  background-size:200%;animation:shimmer 3.5s linear infinite;pointer-events:none
 }
-.auth-submit:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 8px 24px rgba(21,101,192,.4)}
-.auth-submit:active:not(:disabled){transform:scale(.98)}
-.auth-submit:disabled{opacity:.5;cursor:not-allowed}
-.auth-error{margin-top:10px;padding:10px 14px;border-radius:10px;font-size:.84rem;font-weight:700;
-  background:rgba(128,0,32,.12);border:1px solid rgba(128,0,32,.35);color:#d9a0b0;display:none}
-.auth-success{margin-top:10px;padding:10px 14px;border-radius:10px;font-size:.84rem;font-weight:700;
-  background:rgba(0,200,117,.1);border:1px solid rgba(0,200,117,.35);color:#00c875;display:none}
-.auth-footer{margin-top:18px;text-align:center;font-size:.78rem;color:var(--muted)}
-.auth-guest{margin-top:12px;text-align:center}
-.auth-guest button{background:none;border:none;color:var(--muted);font-size:.8rem;
-  cursor:pointer;text-decoration:underline;text-underline-offset:3px;touch-action:manipulation}
-/* user badge no topo */
-#user-badge{
-  display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:99px;
-  background:rgba(21,101,192,.1);border:1px solid rgba(21,101,192,.3);
-  font-size:.82rem;font-weight:700;color:#b8d4ff;margin-left:auto
+
+/* Hero stat hover */
+.hero-stat{transition:transform .2s ease,box-shadow .2s ease}
+.hero-stat:hover{transform:translateY(-2px)}
+.hero-stat strong{transition:color .3s}
+.hero-stat:hover strong{color:#60a5fa}
+
+/* Mode cards */
+.mode-card{transition:transform .22s cubic-bezier(.22,1,.36,1),box-shadow .22s ease,border-color .22s ease!important}
+.mode-card:hover:not(.locked){transform:translateY(-5px) scale(1.02);box-shadow:0 10px 36px rgba(21,101,192,.28);border-color:rgba(59,130,246,.7)}
+
+/* Button ripple base */
+.btn{position:relative;overflow:hidden}
+.btn::after{
+  content:'';position:absolute;inset:0;border-radius:inherit;
+  background:radial-gradient(circle at var(--rx,50%) var(--ry,50%),rgba(255,255,255,.2) 0%,transparent 70%);
+  opacity:0;pointer-events:none;transition:opacity .4s;
 }
-#user-badge .ub-avatar{font-size:1.1rem}
-#user-badge .ub-name{max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#user-badge .ub-logout{cursor:pointer;margin-left:4px;color:var(--muted);font-size:.75rem;
-  touch-action:manipulation}
-#user-badge .ub-logout:hover{color:#fff}
+.btn:active::after{opacity:1;transition:opacity .05s}
+
+/* Auth panel smooth entrance */
+#auth-overlay{transition:opacity .3s ease}
+
+/* Toast */
+.inv-toast-notif{
+  position:fixed;bottom:72px;left:50%;
+  transform:translateX(-50%) translateY(0);
+  background:linear-gradient(135deg,rgba(21,101,192,.96),rgba(13,71,161,.96));
+  border:1px solid rgba(59,130,246,.5);border-radius:12px;
+  padding:10px 22px;color:#fff;font-weight:700;font-size:.88rem;
+  z-index:9999;animation:slideUp .3s ease both;
+  box-shadow:0 8px 28px rgba(0,0,0,.4);white-space:nowrap;
+}
+/* ── END GLOBAL ANIMATIONS v3 ─────────────────────────────────────── */
+
 </style>
 </head>
 <body>
-<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+<!-- ═══════════════════════════════════════════════════════════════════
      AUTH WALL — aparece antes do jogo
-     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+     ═══════════════════════════════════════════════════════════════════ -->
 <div id='auth-wall'>
   <div class='auth-box'>
     <div class='auth-logo'>
-      <span class='al-icon'>⚖ï¸</span>
+      <span class='al-icon'>⚖️</span>
       <h1>Guardiao da Constituicao</h1>
       <p>Crie sua conta ou entre para salvar seu progresso</p>
     </div>
@@ -1673,7 +1795,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
       </div>
       <div class='auth-error' id='login-error'></div>
       <div class='auth-success' id='login-success'></div>
-      <button class='auth-submit' id='btn-login' onclick='doLogin()'>Entrar na Arena ⚔ï¸</button>
+      <button class='auth-submit' id='btn-login' onclick='doLogin()'>Entrar na Arena ⚔️</button>
     </div>
     <!-- REGISTER -->
     <div id='auth-register-form' style='display:none'>
@@ -1695,7 +1817,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
       </div>
       <div class='auth-error' id='reg-error'></div>
       <div class='auth-success' id='reg-success'></div>
-      <button class='auth-submit' id='btn-register' onclick='doRegister()'>Criar minha conta ðŸ›ï¸</button>
+      <button class='auth-submit' id='btn-register' onclick='doRegister()'>Criar minha conta 🏛️</button>
     </div>
     <div class='auth-guest'>
       <button onclick='playAsGuest()'>Jogar sem conta (progresso nao salvo)</button>
@@ -1723,16 +1845,16 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
       <div id='user-badge' style='display:none'>
         <span class='ub-avatar' id='ub-av'>📚</span>
         <span class='ub-name' id='ub-name'>Jogador</span>
-        <span class='ub-logout' onclick='doLogout()' title='Sair'>â</span>
+        <span class='ub-logout' onclick='doLogout()' title='Sair'>⏏</span>
       </div>
       <button class='icon-btn' id='btn-sound' title='Som'>🔊</button>
-      <button class='icon-btn' id='btn-settings' title='Configuracoes'>⚙ï¸</button>
+      <button class='icon-btn' id='btn-settings' title='Configuracoes'>⚙️</button>
     </div>
   </section>
 
   <!-- HERO -->
   <section class='box hero'>
-    <div class='eyebrow'>⚖ï¸ Arena Constitucional — Ranking em Tempo Real</div>
+    <div class='eyebrow'>⚖️ Arena Constitucional — Ranking em Tempo Real</div>
     <h1>Guardiao da Constituicao</h1>
     <p>Prove que voce domina a Constituicao Federal de 1988. Cinco niveis progressivos, multiplos modos de jogo, sistema de XP e progressao, ranking global ao vivo.</p>
     <div class='hero-stats'>
@@ -1763,7 +1885,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
               <p>15 questoes, 5 niveis progressivos</p>
             </div>
             <div class='mode-card' data-mode='infinite' onclick='selectMode("infinite")'>
-              <div class='mode-icon'>♾ï¸</div>
+              <div class='mode-icon'>♾️</div>
               <h3>Infinito</h3>
               <p>Jogue ate errar. Quanto mais longe, melhor!</p>
             </div>
@@ -1798,16 +1920,16 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
         </div>
         <div class='info' style='margin-top:14px'><strong>Ranking:</strong> salvo localmente no servidor. Para compartilhar entre jogadores, mantenha o servidor Python rodando na rede.</div>
         <div style='margin-top:18px;padding:12px 16px;border-radius:12px;background:linear-gradient(135deg,rgba(21,101,192,.08),rgba(21,101,192,.03));border:1px solid rgba(21,101,192,.25);text-align:center;font-size:.82rem;color:#7ab0e0'>
-          <span style='font-size:1rem'>⚖ï¸</span> Programado por <strong style='color:#c8a000'>Icaro Lucas Pereira Batista</strong>
+          <span style='font-size:1rem'>⚖️</span> Programado por <strong style='color:#c8a000'>Icaro Lucas Pereira Batista</strong>
         </div>
       </section>
 
       <!-- GAME -->
       <section class='box panel hidden' id='game'>
         <div class='lives-bar' id='lives-bar'>
-          <span class='heart' id='heart-1'>â¤ï¸</span>
-          <span class='heart' id='heart-2'>â¤ï¸</span>
-          <span class='heart' id='heart-3'>â¤ï¸</span>
+          <span class='heart' id='heart-1'>❤️</span>
+          <span class='heart' id='heart-2'>❤️</span>
+          <span class='heart' id='heart-3'>❤️</span>
         </div>
         <div class='hud'>
           <div class='hud-box'><div class='lbl'>Pontuacao</div><div class='val' id='hud-score'>0</div></div>
@@ -1851,11 +1973,11 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
             <small>Uso unico por partida</small>
           </div>
           <div class='help-card'>
-            <button class='btn secondary' id='btn-skip' style='width:100%'>â­ Pular pergunta</button>
+            <button class='btn secondary' id='btn-skip' style='width:100%'>⏭ Pular pergunta</button>
             <small>Uso unico por partida</small>
           </div>
           <div class='help-card'>
-            <button class='btn secondary' id='btn-extra-time' style='width:100%'>â± +15 segundos</button>
+            <button class='btn secondary' id='btn-extra-time' style='width:100%'>⏱ +15 segundos</button>
             <small>Uso unico por partida</small>
           </div>
         </div>
@@ -1875,7 +1997,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
       <!-- RANKING -->
       <section class='box panel'>
         <div class='rank-hdr'>
-          <h2>ðŸ† Ranking Global</h2>
+          <h2>🏆 Ranking Global</h2>
           <span class='chip'>Atualiza 5s</span>
         </div>
         <div class='ranking' id='ranking-list'>
@@ -1898,7 +2020,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
         <p id='res-text'></p>
         <div class='stat-grid' id='stat-grid'></div>
         <div id='wrong-section' class='hidden'>
-          <div style='font-size:.88rem;font-weight:800;color:#7ab0e0;margin-bottom:8px'>âŒ Perguntas que voce errou:</div>
+          <div style='font-size:.88rem;font-weight:800;color:#7ab0e0;margin-bottom:8px'>❌ Perguntas que voce errou:</div>
           <div class='wrong-list' id='wrong-list'></div>
         </div>
         <div class='save-row'>
@@ -1915,7 +2037,7 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
 
       <!-- CONSTITUTION MAP -->
       <section class='box panel' id='const-map-section'>
-        <h2>🗺ï¸ Mapa da Constituicao</h2>
+        <h2>🗺️ Mapa da Constituicao</h2>
         <div class='const-map' id='const-map'></div>
       </section>
 
@@ -2030,6 +2152,9 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
         <div style='margin-top:14px'>
           <button class='inv-btn-primary' id='inv-btn-ready' onclick='invMarkReady()'>✅ Estou Pronto!</button>
           <p style='color:var(--muted);font-size:.78rem;margin-top:8px;text-align:center'>O jogo inicia quando todos clicarem em Pronto (mín. 2 jogadores)</p>
+          <div id='inv-bot-countdown' style='display:none;margin-top:10px;padding:10px 14px;border-radius:10px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);text-align:center;font-size:.8rem;color:#f59e0b'>
+            🤖 Nenhum outro jogador entrou. Bots entrarão automaticamente em <strong id='inv-bot-secs'>60</strong>s
+          </div>
         </div>
       </div>
 
@@ -2187,17 +2312,17 @@ button,.btn,.option,.mode-card,.avatar-btn,.theme-btn,.skill-card,.icon-btn{
 <script>
 'use strict';
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ══════════════════════════════════════════════════════════════════════
    ACCOUNT SYSTEM
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+   ══════════════════════════════════════════════════════════════════════ */
 
 const AVATARS_AUTH = [
   {id:'estudante', icon:'📚', name:'Estudante'},
-  {id:'advogado',  icon:'👨â€⚖ï¸', name:'Advogado'},
-  {id:'juiza',     icon:'👩â€⚖ï¸', name:'Juiza'},
-  {id:'ministra',  icon:'⚖ï¸',  name:'Ministra'},
-  {id:'professor', icon:'🧑â€ðŸ«', name:'Professor'},
-  {id:'guardiao',  icon:'🛡ï¸', name:'Guardiao'},
+  {id:'advogado',  icon:'⚖️', name:'Advogado'},
+  {id:'juiza',     icon:'⚖️', name:'Juiza'},
+  {id:'ministra',  icon:'⚖️',  name:'Ministra'},
+  {id:'professor', icon:'📖', name:'Professor'},
+  {id:'guardiao',  icon:'🛡️', name:'Guardiao'},
 ];
 
 let currentUser = null;   // {username, avatar, guest}
@@ -2279,7 +2404,7 @@ async function doLogin() {
   } catch(e) {
     showAuthError('login-error', e.message === 'not_found' ? 'Conta nao encontrada.' : 'Erro de conexao.');
   } finally {
-    btn.disabled = false; btn.textContent = 'Entrar na Arena ⚔ï¸';
+    btn.disabled = false; btn.textContent = 'Entrar na Arena ⚔️';
   }
 }
 
@@ -2315,7 +2440,7 @@ async function doRegister() {
   } catch(e) {
     showAuthError('reg-error','Erro ao criar conta. Tente novamente.');
   } finally {
-    btn.disabled = false; btn.textContent = 'Criar minha conta ðŸ›ï¸';
+    btn.disabled = false; btn.textContent = 'Criar minha conta 🏛️';
   }
 }
 
@@ -2504,11 +2629,11 @@ function computeMedals() {
 
   // 3. Remedios perfeito
   if (stats[3] && stats[3].total > 0 && stats[3].ok === stats[3].total)
-    medals.push({id:'rem', name:'⚖ï¸ Mestre dos Remedios', desc:'Dominou todos os remedios constitucionais.'});
+    medals.push({id:'rem', name:'⚖️ Mestre dos Remedios', desc:'Dominou todos os remedios constitucionais.'});
 
   // 4. Casos praticos
   if (stats[5] && stats[5].ok >= 2)
-    medals.push({id:'caso', name:'ðŸ›ï¸ Caso Concreto', desc:'Bom desempenho nos casos praticos.'});
+    medals.push({id:'caso', name:'🏛️ Caso Concreto', desc:'Bom desempenho nos casos praticos.'});
 
   // 5. Sequencia
   if (Object.values(stats).some(x => x.bestStreak >= 4))
@@ -2524,11 +2649,11 @@ function computeMedals() {
 
   // 8. Iniciante
   if (allOk >= 1 && allTot >= 1 && !medals.some(m=>m.id==='first'))
-    medals.push({id:'first', name:'â­ Primeiro Acerto', desc:'Acertou a primeira questao!'});
+    medals.push({id:'first', name:'⭐ Primeiro Acerto', desc:'Acertou a primeira questao!'});
 
   // 9. Velocista (menos de 2 min)
   if (sec > 0 && sec <= 120 && allTot >= 15)
-    medals.push({id:'fast', name:'â±ï¸ Velocista', desc:'Terminou em menos de 2 minutos!'});
+    medals.push({id:'fast', name:'⏱️ Velocista', desc:'Terminou em menos de 2 minutos!'});
 
   // 10. Sequencia longa
   if (Object.values(stats).some(x => x.bestStreak >= 8))
@@ -2536,7 +2661,7 @@ function computeMedals() {
 
   // 11. Modo infinito longe
   if (gameMode === 'infinite' && allOk >= 20)
-    medals.push({id:'infinite20', name:'♾ï¸ Maratonista', desc:'20+ acertos no modo infinito!'});
+    medals.push({id:'infinite20', name:'♾️ Maratonista', desc:'20+ acertos no modo infinito!'});
 
   // 12. Speedrun master
   if (gameMode === 'speedrun' && allOk >= 10)
@@ -2548,7 +2673,7 @@ function computeMedals() {
 
   // 14. Veterano (10+ partidas)
   if (profile.gamesPlayed >= 10)
-    medals.push({id:'veteran', name:'🎖ï¸ Veterano', desc:'10+ partidas jogadas!'});
+    medals.push({id:'veteran', name:'🎖️ Veterano', desc:'10+ partidas jogadas!'});
 
   // 15. Streak diario
   if (profile.dailyStreak >= 5)
@@ -2584,7 +2709,7 @@ function showMedalToast(medal, delayMs) {
   setTimeout(() => {
     const t = document.createElement('div');
     t.className = 'm-toast';
-    t.innerHTML = `<div class='m-toast-head'>ðŸ… Medalha desbloqueada!</div>
+    t.innerHTML = `<div class='m-toast-head'>🏅 Medalha desbloqueada!</div>
                    <div class='m-toast-name'>${medal.name}</div>
                    <div class='m-toast-desc'>${medal.desc}</div>`;
     ui.medalToasts.appendChild(t);
@@ -2651,7 +2776,7 @@ function setPhase(phase, seconds) {
     ui.hudTimer.textContent   = '📖 ' + seconds + 's';
   } else if (phase === 'answering') {
     ui.phaseBar.className  = 'phase-bar answering';
-    ui.phaseLabel.textContent = 'â³ Escolha sua resposta';
+    ui.phaseLabel.textContent = '⏳ Escolha sua resposta';
     ui.hudTimer.textContent   = seconds + 's';
   } else if (phase === 'done-ok') {
     ui.phaseBar.className  = 'phase-bar done-ok';
@@ -2660,12 +2785,12 @@ function setPhase(phase, seconds) {
     ui.hudTimer.textContent   = '--';
   } else if (phase === 'done-no') {
     ui.phaseBar.className  = 'phase-bar done-no';
-    ui.phaseLabel.textContent = 'âŒ Resposta incorreta';
+    ui.phaseLabel.textContent = '❌ Resposta incorreta';
     ui.phaseCd.textContent = '';
     ui.hudTimer.textContent   = '--';
   } else if (phase === 'done-time') {
     ui.phaseBar.className  = 'phase-bar done-no';
-    ui.phaseLabel.textContent = 'â° Tempo esgotado';
+    ui.phaseLabel.textContent = '⏰ Tempo esgotado';
     ui.phaseCd.textContent = '';
     ui.hudTimer.textContent   = '--';
   }
@@ -2704,16 +2829,16 @@ function renderQuestion() {
   const pts = Math.round(lv.base * mult);
   ui.counter.textContent = 'Pergunta ' + (state.idx+1) + '/' + state.deck.length;
   let ptsTxt = '+' + pts + ' pts';
-  if (isGoldenQuestion(q)) ptsTxt = 'â­ ' + ptsTxt + ' (3x)';
+  if (isGoldenQuestion(q)) ptsTxt = '⭐ ' + ptsTxt + ' (3x)';
   if (isBossQuestion(q)) ptsTxt = '🧠 BOSS ' + ptsTxt;
   if (furyActive) ptsTxt += ' 🔥x2';
   ui.ptsPill.textContent = ptsTxt;
 
   // Question text with badges
   let qPrefix = '';
-  if (isGoldenQuestion(q)) qPrefix = '<span class="golden-badge">â­ Questao Dourada</span> ';
+  if (isGoldenQuestion(q)) qPrefix = '<span class="golden-badge">⭐ Questao Dourada</span> ';
   if (isBossQuestion(q)) qPrefix = '<span class="boss-badge">🧠 Pergunta Chefe</span> ';
-  if (q.type === 'fill') qPrefix += '<span class="study-badge">âœï¸ Preencher</span> ';
+  if (q.type === 'fill') qPrefix += '<span class="study-badge">✍️ Preencher</span> ';
   ui.qtext.innerHTML = qPrefix + q.q;
 
   // Help buttons
@@ -2837,7 +2962,7 @@ async function doAnswer(sel, timedOut) {
 
   state.lvStats[q.level].total++;
   let isCorrect = false;
-  let fbTitle = timedOut ? 'â° Tempo esgotado' : WRONG_REACTIONS[Math.floor(Math.random() * WRONG_REACTIONS.length)];
+  let fbTitle = timedOut ? '⏰ Tempo esgotado' : WRONG_REACTIONS[Math.floor(Math.random() * WRONG_REACTIONS.length)];
   let fbBody  = q.exp;
 
   // Anti-guess check
@@ -2930,7 +3055,7 @@ async function doAnswer(sel, timedOut) {
   const narr = getNarratorComment(isCorrect, q.diff || 'normal');
   const narrDiv = document.createElement('div');
   narrDiv.className = 'narrator-box';
-  narrDiv.innerHTML = '<span class="nr-icon">🎙ï¸</span>' + narr;
+  narrDiv.innerHTML = '<span class="nr-icon">🎙️</span>' + narr;
   ui.feedbackBox.appendChild(narrDiv);
 
   // Phase indicator
@@ -3076,7 +3201,7 @@ function useSkip() {
   state.used.skip = true;
   if (ui.btnSkip) ui.btnSkip.disabled = true;
   playSound('skip');
-  showAssist('â­ Pergunta pulada! Sem pontos.');
+  showAssist('⏭ Pergunta pulada! Sem pontos.');
   state.answered = true;
   clearInterval(state.ticker);
   state.wrongQs.push(state.deck[state.idx]);
@@ -3089,7 +3214,7 @@ function useExtraTime() {
   state.used.extraTime = true;
   if (ui.btnExtraTime) ui.btnExtraTime.disabled = true;
   state.timeLeft += 15;
-  showAssist('â± +15 segundos adicionados!');
+  showAssist('⏱ +15 segundos adicionados!');
   playSound('tick');
 }
 
@@ -3103,7 +3228,7 @@ function renderRanking(list) {
   ui.rankingList.innerHTML = sorted.slice(0,12).map((e,i) => `
     <div class='rank-item' style='animation-delay:${i*0.06}s'>
       <span class='rk-name'>${icons[i]||((i+1)+'.')} ${e.name} — ${e.score} pts</span>
-      <span class='rk-meta'>â± ${fmtTime(e.completion_seconds)} | ✓ ${e.correct_answers}/${e.total_questions}</span>
+      <span class='rk-meta'>⏱ ${fmtTime(e.completion_seconds)} | ✓ ${e.correct_answers}/${e.total_questions}</span>
       <span class='rk-sub'>${e.title}${e.medals&&e.medals.length?' · '+e.medals.join(', '):''}</span>
       <span class='rk-sub'>${e.saved_at}</span>
     </div>
@@ -3215,7 +3340,7 @@ function renderLevelCards() {
     <div class='level-card'>
       <span class='chip'>Nivel ${lv.id}</span>
       <h3>${lv.name}</h3>
-      <p>${QPL} questoes sorteadas<br>+${lv.base} pts base por acerto<br>📖 ${lv.read}s leitura + â³ ${lv.answer}s resposta</p>
+      <p>${QPL} questoes sorteadas<br>+${lv.base} pts base por acerto<br>📖 ${lv.read}s leitura + ⏳ ${lv.answer}s resposta</p>
     </div>
   `).join('');
 }
@@ -3255,29 +3380,29 @@ ui.btnInstall.addEventListener('click', async () => {
 
 
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ══════════════════════════════════════════════════════════════════════
    NEW SYSTEMS - XP, Levels, Modes, Sound, Themes, etc.
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+   ══════════════════════════════════════════════════════════════════════ */
 
 /* ── PLAYER LEVELS ─────────────────────────────────────────────────── */
 const PLAYER_LEVELS = [
   {level:1,  xp:0,    title:'Estudante',               icon:'📚'},
-  {level:2,  xp:100,  title:'Estagiario Juridico',     icon:'ðŸ“'},
+  {level:2,  xp:100,  title:'Estagiario Juridico',     icon:'📝'},
   {level:3,  xp:250,  title:'Bacharel em Direito',     icon:'🎓'},
-  {level:5,  xp:500,  title:'Jurista',                  icon:'⚖ï¸'},
-  {level:8,  xp:1000, title:'Magistrado',               icon:'👨â€⚖ï¸'},
-  {level:10, xp:1500, title:'Desembargador',            icon:'ðŸ›ï¸'},
-  {level:15, xp:2500, title:'Ministro do STF',          icon:'ðŸ†'},
+  {level:5,  xp:500,  title:'Jurista',                  icon:'⚖️'},
+  {level:8,  xp:1000, title:'Magistrado',               icon:'⚖️'},
+  {level:10, xp:1500, title:'Desembargador',            icon:'🏛️'},
+  {level:15, xp:2500, title:'Ministro do STF',          icon:'🏆'},
   {level:20, xp:4000, title:'Guardiao da Constituicao', icon:'👑'},
 ];
 
 const AVATARS = [
   {id:'estudante', icon:'📚', name:'Estudante'},
-  {id:'advogado',  icon:'👨â€⚖ï¸', name:'Advogado'},
-  {id:'juiza',     icon:'👩â€⚖ï¸', name:'Juiza'},
-  {id:'ministra',  icon:'⚖ï¸',  name:'Ministra'},
-  {id:'professor', icon:'🧑â€ðŸ«', name:'Professor'},
-  {id:'guardiao',  icon:'🛡ï¸', name:'Guardiao'},
+  {id:'advogado',  icon:'⚖️', name:'Advogado'},
+  {id:'juiza',     icon:'⚖️', name:'Juiza'},
+  {id:'ministra',  icon:'⚖️',  name:'Ministra'},
+  {id:'professor', icon:'📖', name:'Professor'},
+  {id:'guardiao',  icon:'🛡️', name:'Guardiao'},
 ];
 
 const THEMES_MAP = {
@@ -3296,19 +3421,19 @@ const UNLOCKS = [
 
 const CORRECT_REACTIONS = [
   '🎉 Excelente interpretacao constitucional!',
-  '⚖ï¸ Perfeito! Fundamentacao juridica impecavel!',
-  'ðŸ›ï¸ Nem o STF discordaria!',
+  '⚖️ Perfeito! Fundamentacao juridica impecavel!',
+  '🏛️ Nem o STF discordaria!',
   '📜 Conhecimento constitucional solido!',
   '🎯 Precisao juridica impressionante!',
-  'â­ Resposta digna de um constitucionalista!',
+  '⭐ Resposta digna de um constitucionalista!',
   '🔥 Voce domina o texto constitucional!',
   '💎 Interpretacao constitucional impecavel!',
 ];
 
 const WRONG_REACTIONS = [
-  '⚖ï¸ Quase! Veja o fundamento juridico.',
+  '⚖️ Quase! Veja o fundamento juridico.',
   '📖 Boa tentativa! Revise esse artigo.',
-  'ðŸ” Atencao ao texto constitucional.',
+  '🔍 Atencao ao texto constitucional.',
   '📚 Oportunidade de aprendizado!',
   '💡 A Constituicao surpreende as vezes.',
 ];
@@ -3542,7 +3667,7 @@ let answerStartTime = 0;
 
 function checkAntiGuess(answerTimeMs) {
   if (answerTimeMs < 1500 && state.phase === 'answering') {
-    return { penalty: true, multiplier: 0.5, msg: '⚠ï¸ Resposta muito rapida! Pontuacao reduzida pela metade.' };
+    return { penalty: true, multiplier: 0.5, msg: '⚠️ Resposta muito rapida! Pontuacao reduzida pela metade.' };
   }
   return { penalty: false, multiplier: 1 };
 }
@@ -3648,7 +3773,7 @@ function openSettings() {
   modal.className = 'modal-overlay';
   modal.innerHTML = '<div class="modal-content">' +
     '<button class="modal-close" onclick="closeSettings()">✕</button>' +
-    '<h2>⚙ï¸ Configuracoes</h2>' +
+    '<h2>⚙️ Configuracoes</h2>' +
 
     '<div class="setting-group"><label>Tema visual' +
     (isUnlocked('themes') ? '' : ' 🔒 (Nivel 3)') + '</label>' +
@@ -3722,10 +3847,10 @@ function checkEasterEggs() {
   if (!el) return;
 
   if (allOk === allTot && allTot >= 15) {
-    el.textContent = 'ðŸ›ï¸ "Voce e digno do Supremo. A Constituicao esta em boas maos." — Guardiao da Constituicao';
+    el.textContent = '🏛️ "Voce e digno do Supremo. A Constituicao esta em boas maos." — Guardiao da Constituicao';
     el.classList.remove('hidden');
   } else if (allOk === allTot && allTot >= 5) {
-    el.textContent = '⚖ï¸ "Interpretacao constitucional impecavel. Nem o STF discordaria."';
+    el.textContent = '⚖️ "Interpretacao constitucional impecavel. Nem o STF discordaria."';
     el.classList.remove('hidden');
   } else if (state.score >= 250) {
     el.textContent = '👑 "Poucos alcancam esse patamar. Voce honra a Constituicao."';
@@ -3789,9 +3914,9 @@ function stopSpeedrunTimer() {
 
 
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ══════════════════════════════════════════════════════════════════════
    V2 SYSTEMS – Lives, Fury, Golden, Boss, Particles, Skills, Coins, etc.
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+   ══════════════════════════════════════════════════════════════════════ */
 
 /* ── LIVES SYSTEM ──────────────────────────────────────────────────── */
 let lives = 3;
@@ -3868,7 +3993,7 @@ function showSuspense() {
     const el = document.getElementById('suspense-overlay');
     if (!el) { resolve(); return; }
     el.className = 'suspense-overlay';
-    el.innerHTML = '<div class="suspense-text">⚖ï¸ Processando resposta...</div>';
+    el.innerHTML = '<div class="suspense-text">⚖️ Processando resposta...</div>';
     setTimeout(() => { el.className = 'hidden'; resolve(); }, 700);
   });
 }
@@ -3991,7 +4116,7 @@ function showScoreExplosion(pts) {
 function initAnimatedBG() {
   const container = document.getElementById('bg-symbols');
   if (!container) return;
-  const symbols = ['⚖ï¸','📜','ðŸ›ï¸','📚','🔨','â­','🗽','📖','🎓','👨â€⚖ï¸','ðŸ†','🛡ï¸'];
+  const symbols = ['⚖️','📜','🏛️','📚','🔨','⭐','🗽','📖','🎓','⚖️','🏆','🛡️'];
   for (let i = 0; i < 15; i++) {
     const sym = document.createElement('div');
     sym.className = 'bg-sym';
@@ -4049,10 +4174,10 @@ function showEpicIntro() {
   return new Promise(resolve => {
     el.className = 'epic-intro';
     el.innerHTML =
-      '<div class="ei-icon">⚖ï¸</div>' +
+      '<div class="ei-icon">⚖️</div>' +
       '<div class="ei-title">Voce esta prestes a entrar na Arena Constitucional</div>' +
       '<div class="ei-sub">Defenda a Constituicao. Prove seu conhecimento juridico. Torne-se o Guardiao.</div>' +
-      '<button class="btn primary ei-btn" id="btn-enter-arena">Entrar na Arena ⚔ï¸</button>';
+      '<button class="btn primary ei-btn" id="btn-enter-arena">Entrar na Arena ⚔️</button>';
     document.getElementById('btn-enter-arena').addEventListener('click', () => {
       el.style.animation = 'fadeIn .3s ease reverse forwards';
       playSound('levelup');
@@ -4098,7 +4223,7 @@ const SKILLS = [
   {id:'fast', name:'Jurista Rapido', icon:'⚡', desc:'+10s extra em cada pergunta', cost:100, effect:'extraTime'},
   {id:'memory', name:'Memoria Fotografica', icon:'🧠', desc:'Elimina 1 alternativa automaticamente', cost:150, effect:'autoElim'},
   {id:'intuition', name:'Intuicao Juridica', icon:'💡', desc:'Dica automatica no inicio', cost:200, effect:'autoHint'},
-  {id:'shield', name:'Escudo Constitucional', icon:'🛡ï¸', desc:'+1 vida extra por partida', cost:250, effect:'extraLife'},
+  {id:'shield', name:'Escudo Constitucional', icon:'🛡️', desc:'+1 vida extra por partida', cost:250, effect:'extraLife'},
   {id:'double', name:'Dobro ou Nada', icon:'💰', desc:'Moedas em dobro por partida', cost:300, effect:'doubleCoins'},
   {id:'scholar', name:'Erudito', icon:'📚', desc:'+25% XP por partida', cost:350, effect:'bonusXP'},
 ];
@@ -4183,10 +4308,10 @@ function applySkillEffects() {
 /* ── CONSTITUTION MAP ──────────────────────────────────────────────── */
 const CONST_TOPICS = [
   {id:'teoria', name:'Teoria Constitucional', icon:'📜', levels:[1]},
-  {id:'individuais', name:'Direitos Individuais', icon:'🛡ï¸', levels:[2]},
-  {id:'remedios', name:'Remedios Constitucionais', icon:'⚖ï¸', levels:[3]},
-  {id:'sociais', name:'Direitos Sociais', icon:'ðŸ¤', levels:[4]},
-  {id:'praticos', name:'Casos Praticos', icon:'ðŸ›ï¸', levels:[5]},
+  {id:'individuais', name:'Direitos Individuais', icon:'🛡️', levels:[2]},
+  {id:'remedios', name:'Remedios Constitucionais', icon:'⚖️', levels:[3]},
+  {id:'sociais', name:'Direitos Sociais', icon:'🤝', levels:[4]},
+  {id:'praticos', name:'Casos Praticos', icon:'🏛️', levels:[5]},
 ];
 
 function renderConstitutionMap() {
@@ -4231,18 +4356,18 @@ function updateTopicStats(level, correct) {
 const NARRATOR_COMMENTS = {
   correct_easy: [
     '📖 O STF consolidou esse entendimento em diversas decisoes.',
-    '⚖ï¸ Essa e uma questao basilar do direito constitucional brasileiro.',
-    'ðŸ›ï¸ Importante fundamento para qualquer operador do direito.',
+    '⚖️ Essa e uma questao basilar do direito constitucional brasileiro.',
+    '🏛️ Importante fundamento para qualquer operador do direito.',
   ],
   correct_hard: [
     '🎓 Poucos dominam esse tema com tanta clareza. Parabens!',
-    '⚖ï¸ Esse e um tema complexo que exige profundo conhecimento constitucional.',
-    '👨â€⚖ï¸ O proprio STF ja debateu longamente essa questao.',
+    '⚖️ Esse e um tema complexo que exige profundo conhecimento constitucional.',
+    '⚖️ O proprio STF ja debateu longamente essa questao.',
   ],
   wrong: [
     '📚 Revise esse tema. E fundamental para o direito constitucional.',
     '💡 Esse artigo e frequentemente cobrado em concursos e provas.',
-    'ðŸ” Aprofunde-se nessa materia. A Constituicao tem nuances importantes.',
+    '🔍 Aprofunde-se nessa materia. A Constituicao tem nuances importantes.',
   ],
 };
 
@@ -4274,7 +4399,7 @@ function getDifficultyMultiplier(q) {
 
 /* ── STREAK MILESTONES ─────────────────────────────────────────────── */
 const STREAK_MILESTONES = [
-  {days:3, reward:'medal', desc:'ðŸ… Medalha de Consistencia!', coins:20},
+  {days:3, reward:'medal', desc:'🏅 Medalha de Consistencia!', coins:20},
   {days:5, reward:'avatar', desc:'🎭 Avatar especial desbloqueado!', coins:50},
   {days:7, reward:'theme', desc:'🎨 Tema exclusivo desbloqueado!', coins:100},
   {days:14, reward:'title', desc:'👑 Titulo "Constitucionalista Dedicado"!', coins:200},
@@ -4365,7 +4490,7 @@ function doFillAnswer(isCorrect, q) {
   const narr = getNarratorComment(isCorrect, q.diff || 'normal');
   const narrDiv = document.createElement('div');
   narrDiv.className = 'narrator-box';
-  narrDiv.innerHTML = '<span class="nr-icon">🎙ï¸</span>' + narr;
+  narrDiv.innerHTML = '<span class="nr-icon">🎙️</span>' + narr;
   ui.feedbackBox.appendChild(narrDiv);
 
   refreshMedals();
@@ -4469,10 +4594,20 @@ function closeInvestigacao() {
 }
 
 function invShowScreen(name) {
-  ['lobby','waiting','intro','investigacao','votacao','resultado'].forEach(s => {
-    const el = document.getElementById('inv-screen-' + s);
-    if (el) el.classList.toggle('hidden', s !== name);
-  });
+  const current = document.querySelector('#inv-overlay .inv-screen:not(.hidden)');
+  const doSwitch = () => {
+    ['lobby','waiting','intro','investigacao','votacao','resultado'].forEach(s => {
+      const el = document.getElementById('inv-screen-' + s);
+      if (el) el.classList.toggle('hidden', s !== name);
+    });
+  };
+  if (current && !current.classList.contains('hidden')) {
+    current.style.transition = 'opacity .2s ease';
+    current.style.opacity = '0';
+    setTimeout(() => { doSwitch(); if(current) { current.style.opacity=''; current.style.transition=''; } }, 200);
+  } else {
+    doSwitch();
+  }
 }
 
 async function invRefreshRooms() {
@@ -4522,6 +4657,7 @@ async function invJoinRoomId(roomId) {
 function invEnterWaiting() {
   invShowScreen('waiting');
   document.getElementById('inv-my-room-code').textContent = INV.roomId;
+  INV.waitingSince = Date.now();
   if (INV.pollTimer) clearInterval(INV.pollTimer);
   INV.pollTimer = setInterval(invPoll, 2000);
   invPoll();
@@ -4552,6 +4688,14 @@ function invRenderState(state) {
   // Phase transitions
   if (phase !== INV.phase) {
     INV.phase = phase;
+    const phaseMessages = {
+      intro: '📋 Caso revelado! Leia os detalhes.',
+      investigacao: '🔍 Investigação iniciada! Use suas habilidades.',
+      debate: '💬 Fase de debate! Convença os outros.',
+      votacao: '⚖️ Hora de votar! Decida com sabedoria.',
+      resultado: '🏛️ Veredicto final!'
+    };
+    if (phaseMessages[phase]) invToast(phaseMessages[phase]);
     if (phase === 'intro') invShowScreen('intro');
     else if (phase === 'investigacao') { invShowScreen('investigacao'); invRenderMyRole(state); }
     else if (phase === 'debate') { invShowScreen('investigacao'); invTab('chat'); }
@@ -4573,12 +4717,29 @@ function invRenderWaiting(state) {
   const caseEl = document.getElementById('inv-waiting-case');
   if (caseEl) caseEl.textContent = state.case?.title || '';
   const playersEl = document.getElementById('inv-waiting-players');
-  if (playersEl) playersEl.innerHTML = state.players.map(p =>
-    `<div class='inv-waiting-player${p.ready?" ready":""}'>
-      <span class='inv-player-avatar'>🧑‍⚖️</span>
-      <span class='inv-player-name'>${p.name}${p.id===invGetPlayerId()?' (você)':''}</span>
-      <span class='inv-player-status${p.ready?" ready":""}'>${p.ready?'✅ Pronto':'⏳ Aguardando'}</span>
-    </div>`).join('');
+  if (playersEl) playersEl.innerHTML = state.players.map(p => {
+    const isMe = p.id === invGetPlayerId();
+    const col = p.is_bot ? '#f59e0b' : (isMe ? '#60a5fa' : '#fff');
+    return `<div class='inv-waiting-player${p.ready?" ready":""}' style='display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);margin-bottom:6px;animation:fadeUp .3s ease both;transition:border-color .3s' ${p.ready?'style="border-color:rgba(52,211,153,.3)"':''}>
+      <span style='font-size:1.4rem'>${p.is_bot?'🤖':'⚖️'}</span>
+      <span style='flex:1;font-weight:700;color:${col}'>${p.name}${isMe?' <small style="color:#60a5fa;font-weight:400">(você)</small>':''}${p.is_bot?' <small style="color:#6b7280">[bot]</small>':''}</span>
+      <span style='font-size:.78rem;font-weight:800;color:${p.ready?"#34d399":"#6b7280"}'>${p.ready?'✅ Pronto':'⏳ Aguardando'}</span>
+    </div>`;
+  }).join('');
+
+  // Bot countdown: show after 10s waiting if solo
+  const botDiv = document.getElementById('inv-bot-countdown');
+  const botSecs = document.getElementById('inv-bot-secs');
+  if (botDiv && INV.waitingSince) {
+    const elapsed = Math.floor((Date.now() - INV.waitingSince) / 1000);
+    const humanCount = state.players.filter(p => !p.is_bot).length;
+    if (humanCount < 3 && elapsed >= 10) {
+      botDiv.style.display = 'block';
+      if (botSecs) botSecs.textContent = Math.max(0, 60 - elapsed);
+    } else if (humanCount >= 3) {
+      botDiv.style.display = 'none';
+    }
+  }
 }
 
 function invRenderIntro(state) {
@@ -4848,6 +5009,31 @@ function invFmtTime(s) {
   return m > 0 ? `${m}:${sec.toString().padStart(2,'0')}` : `${Math.ceil(s)}s`;
 }
 
+
+/* ── TOAST NOTIFICATION (v3) ───────────────────────────────────────── */
+function invToast(msg, duration=2500) {
+  const t = document.createElement('div');
+  t.className = 'inv-toast-notif';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => {
+    t.style.animation = 'toastOut .4s ease forwards';
+    setTimeout(() => t.remove(), 400);
+  }, duration);
+}
+
+/* ── BUTTON RIPPLE ──────────────────────────────────────────────────── */
+document.addEventListener('click', e => {
+  const btn = e.target.closest('.btn,.inv-btn-primary,.inv-btn-secondary,.inv-btn-ghost');
+  if (!btn) return;
+  const rect = btn.getBoundingClientRect();
+  const rx = ((e.clientX - rect.left) / rect.width * 100).toFixed(1) + '%';
+  const ry = ((e.clientY - rect.top)  / rect.height * 100).toFixed(1) + '%';
+  btn.style.setProperty('--rx', rx);
+  btn.style.setProperty('--ry', ry);
+});
+
+
 function invPlayAgain() {
   if (INV.pollTimer) { clearInterval(INV.pollTimer); INV.pollTimer = null; }
   INV.roomId = null; INV.phase = null;
@@ -4861,7 +5047,7 @@ function invPlayAgain() {
 </html>"""
 
 
-# â”€â”€ BACKEND â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── BACKEND ──────────────────────────────────────────────────────────────────
 
 def clean_entry(item: dict) -> dict:
     return {
@@ -4973,7 +5159,7 @@ def render_html() -> bytes:
     return html.encode("utf-8")
 
 
-# â”€â”€ HTTP HANDLER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── HTTP HANDLER ──────────────────────────────────────────────────────────────
 
 class QuizHandler(BaseHTTPRequestHandler):
     def send_bytes(self, body, ct, status=HTTPStatus.OK, cc=None):
@@ -5137,7 +5323,7 @@ class QuizHandler(BaseHTTPRequestHandler):
         pass
 
 
-# â”€â”€ SERVER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── SERVER ────────────────────────────────────────────────────────────────────
 
 def guess_ip() -> str:
     try:
@@ -5179,3 +5365,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
