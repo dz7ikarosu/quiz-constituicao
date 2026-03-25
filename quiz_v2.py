@@ -216,17 +216,19 @@ def _make_bot_player(bot_name: str) -> dict:
     }
 
 def _fill_with_bots(room: dict):
-    """Add bots until room has at least 2 players (min viable game), up to MAX_PLAYERS."""
+    """Preenche sala com bots até 3 jogadores, respeitando max 5."""
     MAX_PLAYERS = 5
+    MIN_WITH_BOTS = 3   # mínimo confortável de jogadores
     if not room.get("bots_enabled", True):
         return
     existing_bots = {p["id"] for p in room["players"] if p.get("is_bot")}
     available = [n for n in BOT_NAMES
                  if "BOT_" + n.replace(" ","_").upper() not in existing_bots]
     _random.shuffle(available)
-    # Fill to at least 2 players, respect max 5
-    needed = max(0, min(2, MAX_PLAYERS) - len(room["players"]))
-    slots = MAX_PLAYERS - len(room["players"])
+    # Preenche até MIN_WITH_BOTS ou MAX_PLAYERS (o que for menor)
+    target = min(MIN_WITH_BOTS, MAX_PLAYERS)
+    needed = max(0, target - len(room["players"]))
+    slots  = MAX_PLAYERS - len(room["players"])
     to_add = min(needed, slots, len(available))
     for i in range(to_add):
         room["players"].append(_make_bot_player(available[i]))
@@ -253,30 +255,43 @@ def _bot_vote(room: dict):
         p["vote"] = {"violacao": violacao, "artigo": artigo, "culpado": culpado}
 
 def _tick_bots(room: dict, now: float):
-    """Called every tick: fill bots if needed, auto-vote when voting."""
+    """Tick dos bots: preencher sala, iniciar jogo e votar automaticamente."""
     phase = room["phase"]
-    humans = [p for p in room["players"] if not p.get("is_bot")]
-    # Only fill if we have at least 1 human and been waiting > BOT_WAIT_SECONDS
-    if phase == "lobby" and len(room["players"]) < 3:
-        elapsed_since_create = now - room["created_at"]
-        if elapsed_since_create >= BOT_WAIT_SECONDS:
-            _fill_with_bots(room)
-    # Auto-ready bots in lobby
+
     if phase == "lobby":
-        for p in room["players"]:
-            if p.get("is_bot"):
-                p["ready"] = True
-        # Start if: >= 2 players AND all humans are ready (bots always ready)
         humans = [p for p in room["players"] if not p.get("is_bot")]
-        bots = [p for p in room["players"] if p.get("is_bot")]
+        bots   = [p for p in room["players"] if p.get("is_bot")]
+        elapsed = now - room["created_at"]
+
+        # 1. Preencher com bots após BOT_WAIT_SECONDS
+        if room.get("bots_enabled", True) and elapsed >= BOT_WAIT_SECONDS:
+            _fill_with_bots(room)
+            # Re-listar após preenchimento
+            bots = [p for p in room["players"] if p.get("is_bot")]
+
+        # 2. Bots são sempre "prontos"
+        for p in bots:
+            p["ready"] = True
+
+        # 3. Auto-iniciar quando:
+        #    a) Há pelo menos 1 humano + 1 bot, e o humano clicou Pronto
+        #    OU
+        #    b) Bots entraram há mais de 5s e há pelo menos 2 jogadores no total
         total = len(room["players"])
         all_humans_ready = all(p.get("ready") for p in humans) if humans else False
-        if total >= 2 and all_humans_ready and len(bots) > 0:
+        bots_just_filled = len(bots) > 0 and elapsed >= BOT_WAIT_SECONDS + 5
+
+        should_start = (
+            (total >= 2 and all_humans_ready and len(bots) > 0) or
+            (total >= 2 and bots_just_filled and len(humans) >= 1)
+        )
+        if should_start:
             _advance_phase(room)
-    # Auto-vote in votacao phase
+
+    # Auto-votar na fase de votação
     if phase == "votacao":
-        elapsed = now - room["phase_start"]
-        if elapsed >= 15:  # bots vote after 15s
+        elapsed_phase = now - room["phase_start"]
+        if elapsed_phase >= 15:
             _bot_vote(room)
 # ── END BOT SYSTEM ────────────────────────────────────────────────────────────
 
@@ -4938,10 +4953,13 @@ function invRenderWaiting(state) {
     const elapsed = Math.floor((Date.now() - INV.waitingSince) / 1000);
     const humanCount = state.players.filter(p => !p.is_bot).length;
     const botsEnabled = state.bots_enabled !== false;
-    if (botsEnabled && humanCount < 5 && elapsed >= 10) {
+    const secsLeft = Math.max(0, 60 - elapsed);
+    const hasBots = state.players.some(p => p.is_bot);
+    if (botsEnabled && !hasBots && humanCount < 5 && elapsed >= 10) {
       botDiv.style.display = 'block';
-      if (botSecs) botSecs.textContent = Math.max(0, 60 - elapsed);
+      if (botSecs) botSecs.textContent = secsLeft;
     } else {
+      // Bots já entraram ou não habilitado — esconde o countdown
       botDiv.style.display = 'none';
     }
   }
